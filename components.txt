@@ -1,0 +1,18 @@
+grove - red led
+grove - infrared emitter
+grove - rotary angle sensor
+grove - buzzer
+grove - light sensor v1.2
+3 grove - boutons
+base shield
+arduino uno
+grove - ultrasonic ranger
+grove - infrared receiver
+grove - blue led
+grove - green led
+grove - 16x2 LCD black on yellow
+grove - led bar
+grove - 6-position DIP switch
+grove - 4-digit display
+keypad 3x4 tout fait (pas grove) - touches 0-9, *, # - matrice 7 fils
+cables jumper (grove <-> broches arduino / raspberry)
