@@ -14,5 +14,5 @@ grove - 16x2 LCD black on yellow
 grove - led bar
 grove - 6-position DIP switch
 grove - 4-digit display
-keypad 3x4 tout fait (pas grove) - touches 0-9, *, # - matrice 7 fils
+keypad 3x4 analogique Aihasd (pas grove) - touches 0-9, *, # - 3 fils : VCC, GND, OUT (une seule sortie analogique)
 cables jumper (grove <-> broches arduino / raspberry)

@@ -1,6 +1,8 @@
-# Désamorçage coopératif : document de conception
+# ADE (Apprenti Démineur de l'Extrême) : document de conception
 
-Projet *OS embarqués pour l'Edge Computing* (SI5/M2, 2026-2027).
+**Auteurs** : Lorenzo Baladier, Marius Pistoresi
+
+ADE est un jeu de désamorçage coopératif, réalisé pour le projet *OS embarqués pour l'Edge Computing* (SI5/M2, 2026-2027).
 Smart sensor/actuator Arduino Uno + FreeRTOS, passerelle Raspberry Pi (maître I2C), service cloud.
 
 ---
@@ -16,7 +18,7 @@ L'idée de départ s'appuyait sur des capteurs **absents de notre kit** : IMU, c
 | Capteur de lumière v1.2 | LED Bar 10 segments (MY9221) | Câbles jumper (Grove ↔ broches, RPi) |
 | 3 boutons Grove | LED rouge, verte, bleue | (Raspberry Pi, fourni à part) |
 | Interrupteur DIP 6 positions (I2C) | Buzzer | |
-| Keypad 3×4 tout fait (0–9, `*`, `#`, hors Grove), via un module PCF8574 | | |
+| Keypad 3×4 analogique (0–9, `*`, `#`, hors Grove), une seule sortie analogique | | |
 
 L'**émetteur et le récepteur infrarouges** du kit ne sont **pas utilisés**. L'émetteur exige D3 et le Timer2, pris par le buzzer, il n'y a plus de broches, et ils portaient le module le plus risqué (une barrière IR). Tous les autres composants ont un rôle précis.
 
@@ -27,7 +29,7 @@ L'**émetteur et le récepteur infrarouges** du kit ne sont **pas utilisés**. L
 | Stabilisateur (IMU, inclinaison > 20°) | **Périmètre** : ultrasons, zone interdite autour de « l'œil » de la bombe | C'est ce module qui porte la contrainte dure de 50 ms |
 | Silence (capteur de bruit) | **Occultation** : capteur de lumière, à masquer N fois | Même esprit (« faire un geste au bon moment ») |
 | Cartouches (capteur de couleur) | *retiré* | Pas de capteur de couleur ; la variante à barrière IR a été abandonnée au profit du clavier |
-| Clavier (tactile) | **Clavier** : keypad 3×4 tout fait, relié au bus I2C par un PCF8574 | Un code déduit d'une règle du manuel, comme dans l'idée d'origine |
+| Clavier (tactile) | **Clavier** : keypad 3×4 analogique, lu sur une seule entrée analogique (A2) | Un code déduit d'une règle du manuel, comme dans l'idée d'origine |
 | Clé NFC | **Fréquence** : potentiomètre et LCD | Le n° de série affiché reste au cœur des règles |
 | *(nouveau)* | **Relais** : 3 boutons Grove sous 3 LED de couleur | Module de mémoire en 3 étapes |
 | *(nouveau)* | **Détonateur** : interrupteur DIP 6 positions | Code binaire à composer, interrupteurs piégés |
@@ -130,22 +132,19 @@ Pour chaque module : matériel, ce que voit le démineur, extrait de manuel **g�
 
 ### 2.4 Clavier (keypad 3×4 : 0–9, `*`, `#`)
 
-- **Matériel** : keypad 3×4 tout fait (matrice : 4 lignes, 3 colonnes, 7 fils), branché sur un **module PCF8574** (8 entrées/sorties pilotées en I2C), lui-même relié au hub du bus I2C logiciel. La sortie INT du PCF8574 arrive sur A2. Coût en broches de l'Arduino : **une seule (A2)**.
+- **Matériel** : keypad 3×4 **analogique** (Aihasd, 12 touches). Un pont de résistances intégré donne une tension différente pour chaque touche sur une sortie unique. 3 fils : VCC, GND, OUT. Coût en broches de l'Arduino : **une seule (A2)**.
 - **Le démineur voit** : `LOT 5829` en ligne 1 du LCD ; ce qu'il tape s'affiche en ligne 2 (`CODE: 31__`).
 - **Extrait de manuel** :
   > *Prenez le numéro de lot. Si son dernier chiffre est pair, remplacez chaque chiffre par sa moitié (arrondie en dessous) ; sinon, inversez l'ordre des chiffres. Si le numéro de série contient une voyelle, ajoutez 1 au premier chiffre (9 devient 0). Tapez le code puis `#`. `*` efface.*
 
   **Variante « code croisé »** (niveau Expert) : *« Les deux premiers chiffres du code sont les décimales de la fréquence réglée au module Fréquence. »* Le démineur doit s'en souvenir : les modules ne sont plus indépendants.
-- **Câblage** :
-  - lignes du keypad sur P0–P3 du PCF8574, colonnes sur P4–P6 (P7 libre) ;
-  - adresse du PCF8574 : 0x20 (ou 0x38–0x3F pour la variante PCF8574A). **Ne jamais prendre 0x3E**, c'est l'adresse du LCD : régler les cavaliers A0–A2 en conséquence ;
-  - INT (sortie à drain ouvert, active à 0) → A2, avec la pull-up interne de l'Arduino.
+- **Câblage** : VCC → 5 V, GND → GND, OUT → A2, par jumpers. VCC est la référence de l'ADC (5 V) : la tension lue ne dépend donc pas des variations de l'alimentation.
 - **Traitement local** :
-  - **au repos**, les 4 lignes sont à 0 et les colonnes en entrée (pull-up faible du PCF8574). Un appui tire une colonne à 0, le PCF8574 baisse INT : **pas de scrutation inutile du bus** ;
-  - INT déclenche une interruption *pin change* (PCINT1, broche A2), qui notifie `tHmi`, la tâche propriétaire du bus I2C logiciel ;
-  - `tHmi` attend 20 ms (anti-rebond), puis **balaye** la matrice : pour chaque ligne, une écriture (cette ligne à 0, les autres à 1) et une lecture des colonnes, soit 8 petites transactions I2C (~3 ms à 50 kHz) ;
-  - la touche est confirmée si le balayage donne la même touche deux fois de suite, puis la matrice revient au repos ; l'événement part dans `qEvents` ;
-  - deux touches à la fois (ou plus) : balayage ambigu, ignoré et compté dans le registre DIAG ;
+  - `tSense` lit A2 toutes les 20 ms, avec le cadran et la cellule (une conversion ADC prend ~110 µs) ;
+  - **table des 12 touches** : la valeur ADC (0–1023) est comparée à 12 fenêtres centrées sur la tension de chaque touche, plus celle du repos. La table est **relevée au montage** (tensions à mesurer sur notre exemplaire) et stockée en PROGMEM. Avec 12 touches, les niveaux sont espacés d'environ 80 pas d'ADC : la marge est large ;
+  - **anti-rebond** : une touche est confirmée quand deux lectures consécutives tombent dans la même fenêtre (40 ms), et relâchée quand la valeur revient au repos. L'événement part dans `qEvents` ;
+  - une valeur entre deux fenêtres (transition, ou deux touches à la fois qui donnent une tension intermédiaire) est ignorée et comptée dans le registre DIAG ;
+  - pas d'interruption ni de bus : le clavier ne touche plus au bus I2C logiciel ;
   - mauvais code validé par `#` : faute.
 
 ### 2.5 Relais (3 boutons Grove + 3 LED) : module de mémoire
@@ -205,12 +204,12 @@ Le shield a 7 ports numériques (D2–D8), 4 analogiques (A0–A3), 4 I2C (tous 
 | D2 | Ultrasons | port D2 | **INT0** : interruption externe dédiée, la plus précise pour horodater l'écho |
 | D3 | Buzzer | port D3 | `tone()` (Timer2) pour jouer des notes |
 | D4, D5, D6 | Boutons Grove 1, 2, 3 | ports D4, D5, D6 | **PCINT20–22** (groupe PCINT2, comme dans la phase 1) : une seule ISR pour les 3 boutons |
-| D7 / D8 | **Bus I2C logiciel** (SCL = D7, SDA = D8) → hub → LCD + DIP + PCF8574 du clavier | **port D7** | Les deux broches forment un port Grove : le hub s'y branche directement. Voir 3.2 |
+| D7 / D8 | **Bus I2C logiciel** (SCL = D7, SDA = D8) → hub → LCD + DIP | **port D7** | Les deux broches forment un port Grove : le hub s'y branche directement. Voir 3.2 |
 | D9, D10, D11 | LED rouge, verte, bleue | jumpers | Pas de port Grove sur D9–D13 |
 | D12 / D13 | **Afficheur 4 chiffres** (CLK D12, DIO D13) | jumpers | Dernière paire libre |
 | A0 | Potentiomètre | port A0 | ADC |
 | A1 | Capteur de lumière | port A1 | ADC |
-| A2 | **INT du PCF8574** (clavier) | jumper | PCINT10 (groupe PCINT1) : réveil sur appui, sans scruter le bus |
+| A2 | **Keypad analogique** (sortie OUT) | jumper | ADC : chaque touche donne une tension différente |
 | A3 | *libre* | — | Réserve |
 | A4 / A5 | **I2C esclave vers le RPi** | port I2C ou jumpers vers GPIO2 (SDA) / GPIO3 (SCL) du RPi, via l'adaptateur de niveau | Seul contrôleur TWI matériel du Uno |
 
@@ -220,14 +219,14 @@ Le shield a 7 ports numériques (D2–D8), 4 analogiques (A0–A3), 4 I2C (tous 
 
 ### 3.2 Le piège du LCD et du DIP sur l'I2C
 
-Le LCD Grove 16x2 (contrôleur JHD1802, adresse 0x3E), l'interrupteur DIP 6 positions (microcontrôleur intégré, adresse 0x03) et le PCF8574 du clavier (0x20) sont des périphériques **I2C**. Or le seul contrôleur I2C du Uno doit être **esclave** du Raspberry Pi. Le faire basculer maître/esclave sur le même bus reviendrait à du multi-maître, que le contrôleur I2C du RPi gère mal.
+Le LCD Grove 16x2 (contrôleur JHD1802, adresse 0x3E), et l'interrupteur DIP 6 positions (microcontrôleur intégré, adresse 0x03) sont des périphériques **I2C**. Or le seul contrôleur I2C du Uno doit être **esclave** du Raspberry Pi. Le faire basculer maître/esclave sur le même bus reviendrait à du multi-maître, que le contrôleur I2C du RPi gère mal.
 
-**Solution retenue** : un **second bus I2C logiciel** (bit-banging, ~50 kHz) sur D7/D8, où l'Arduino est maître et le LCD, le DIP et le PCF8574 les esclaves. Ils se branchent sur le port Grove D7 via un **hub I2C Grove** à 4 ports : un vers l'Arduino, trois pour les périphériques (le PCF8574, qui n'est pas Grove, par un câble Grove → jumper). Au démarrage, l'Arduino **scanne le bus** et signale tout périphérique absent ou en conflit d'adresse.
+**Solution retenue** : un **second bus I2C logiciel** (bit-banging, ~50 kHz) sur D7/D8, où l'Arduino est maître et le LCD et le DIP les esclaves. Ils se branchent sur le port Grove D7 via un **hub I2C Grove** : un port vers l'Arduino, un pour le LCD, un pour le DIP. Au démarrage, l'Arduino **scanne le bus** et signale tout périphérique absent ou en conflit d'adresse.
 
 - Le driver bit-bang laisse les interruptions **actives** : une préemption ralentit seulement l'horloge I2C, ce que le protocole tolère. Pas de section critique longue, donc pas d'impact sur la contrainte de 50 ms.
 - Le DIP embarque un microcontrôleur qui peut **étirer l'horloge** : le driver relâche SCL puis attend qu'elle remonte vraiment avant de continuer (facile à faire en bit-bang).
 - La bibliothèque Grove du DIP (`Grove_Multi_Switch`) s'appuie sur `Wire`, donc sur le bus matériel. Il faut réécrire sa lecture sur notre bus logiciel (quelques lignes, protocole à relever dans la bibliothèque).
-- **Un seul propriétaire du bus** : la tâche `tHmi` fait à la fois les écritures LCD, la lecture du DIP et le balayage du clavier. Les écritures LCD sont découpées (seuls les caractères modifiés) pour qu'un appui de touche n'attende jamais plus de quelques ms. Pas de mutex, donc **pas d'inversion de priorité possible** sur ce bus. L'alternative (mutex avec héritage de priorité partagé entre `tHmi` et `tSense`) est à citer dans l'article comme choix écarté.
+- **Un seul propriétaire du bus** : la tâche `tHmi` fait à la fois les écritures LCD et la lecture du DIP. Les écritures LCD sont découpées (seuls les caractères modifiés) pour que la lecture du DIP (échéance souple de ~100 ms, §2.6) n'attende jamais plus de quelques ms. Pas de mutex, donc **pas d'inversion de priorité possible** sur ce bus. L'alternative (mutex avec héritage de priorité partagé entre `tHmi` et `tSense`) est à citer dans l'article comme choix écarté.
 
 L'afficheur 4 chiffres (TM1637) et la LED Bar (MY9221) ne sont **pas** de l'I2C : chacun a son protocole série à 2 fils, pilotés en bit-bang sur leurs broches dédiées. Ils sont simples et rapides (~1 ms pour une mise à jour complète).
 
@@ -271,10 +270,9 @@ Bibliothèque `Arduino_FreeRTOS` (feilipu). Son tick par défaut vient du **watc
 | `INT0` | front de l'écho | horodate (TCNT1) ; sur le front descendant : calcule la distance, si < D deux fois de suite → `vTaskNotifyGiveFromISR(tSafety)` + `portYIELD_FROM_ISR()` |
 | `PCINT2` | boutons Grove | lit `PIND`, anti-rebond 30 ms par horodatage, envoie l'événement dans `qEvents` |
 | `TIMER2_COMPA` | `tone()` | bascule la broche du buzzer |
-| `PCINT1` | INT du PCF8574 (A2) | si INT est à 0 : notifie `tHmi` (une touche vient d'être pressée) |
 | `TWI` (Wire) | RPi | `onReceive` : copie dans un buffer + notifie `tComm`. `onRequest` : renvoie un buffer **déjà prêt** |
 
-L'ISR du clavier ne touche pas au bus I2C (un balayage prend ~3 ms, beaucoup trop pour une ISR) : elle se contente de réveiller la tâche qui possède le bus.
+Le clavier analogique n'a pas d'interruption : il est échantillonné par `tSense` comme les autres entrées analogiques.
 
 ### 4.3 Tâches
 
@@ -282,9 +280,9 @@ L'ISR du clavier ne touche pas au bus I2C (un balayage prend ~3 ms, beaucoup tro
 |---|---|---|---|
 | `tSafety` | **3** (max) | notification de l'ISR ultrason | Allume tout de suite la LED rouge (écriture directe sur le port) et lance le son de faute, horodate la latence, pousse `FAULT` dans `qEvents` |
 | `tGame` | 2 | `qEvents` + timeout 100 ms | Machine à états de la partie, logique des modules, chrono (avec facteur de vitesse), fautes, explosion |
-| `tSense` | 2 | périodique 20 ms | ADC cadran et lumière : filtrage, hystérésis, calibration, occultations → `qEvents` |
+| `tSense` | 2 | périodique 20 ms | ADC cadran, lumière et clavier : filtrage, hystérésis, calibration, occultations, décodage des touches → `qEvents` |
 | `tComm` | 1 | notification de l'ISR TWI | Décode les commandes, vérifie le CRC de la configuration, construit l'instantané d'état pour le RPi |
-| `tHmi` | 1 | périodique 50 ms **ou** notification de l'ISR clavier | Propriétaire du bus I2C logiciel : LCD (lent, préemptible), **lecture du DIP** et **balayage du clavier** (touches et changements → `qEvents`). Afficheur 4 chiffres (chrono, 20 Hz pour les centièmes), LED Bar, motifs des LED et du buzzer |
+| `tHmi` | 1 | périodique 50 ms | Propriétaire du bus I2C logiciel : LCD (lent, préemptible) et **lecture du DIP** (changements → `qEvents`). Afficheur 4 chiffres (chrono, 20 Hz pour les centièmes), LED Bar, motifs des LED et du buzzer |
 | *idle* | 0 | — | Hook : compteur de charge CPU, puis mise en veille (`SLEEP_MODE_IDLE`) |
 
 **Pourquoi ces priorités** : seule la chaîne de sécurité a une échéance dure, elle est donc au-dessus de tout. Le jeu et l'acquisition passent avant l'IHM : un LCD qui se rafraîchit 30 ms en retard ne se voit pas, alors qu'une touche perdue, si. `tComm` est bas parce que le RPi interroge (il réessaie) et que les réponses I2C sont déjà prêtes en ISR.
@@ -382,7 +380,7 @@ Le RPi écrit le numéro de registre puis lit N octets (start répété, `I2C_RD
 | `0x00` | STATUS | R | 10 | état, temps restant (uint16, 1/10 s), fautes, fautes max, masque des modules résolus, module courant, facteur de vitesse (%), position du DIP (6 bits), CRC-8 |
 | `0x08` | EVT_COUNT | R | 1 | événements en attente |
 | `0x09` | EVT_POP | R | 7 | séquence, type, module, données (2), t depuis le départ (2), puis l'événement est retiré |
-| `0x10` | DIAG | R | 12 | latence RT max et moyenne (µs), dépassements, charge CPU %, pile min, erreurs I2C (deux bus), balayages clavier rejetés, uptime |
+| `0x10` | DIAG | R | 12 | latence RT max et moyenne (µs), dépassements, charge CPU %, pile min, erreurs I2C (deux bus), lectures clavier rejetées, uptime |
 | `0x20` | CMD | W | 1–4 | `01` ARM, `02` START (démarrage à distance), `03` ABORT, `04` RESET, `10` SABOTAGE_ACCEL(facteur, durée), `11` SABOTAGE_BROUILLAGE(durée), `12` FAUSSE_ALARME, `20` PING(nonce) |
 | `0x40`–`0x41` | CONFIG p0–p1 | W | ≤ 30 chacune | blob de configuration, CRC-8 en dernière position ; ARM refusé si CRC faux |
 
@@ -468,9 +466,7 @@ Peut être réel (petit VPS) ou simulé sur un portable (`docker compose`), comm
 | Risque | Probabilité | Plan B |
 |---|---|---|
 | Échos parasites de l'ultrason, échéance non tenue | moyenne | Confirmation sur un seul échantillon, ou contrainte dure déplacée sur la cellule photosensible (§6.2) |
-| Pas de module PCF8574 disponible | moyenne | Le keypad en direct demande 7 broches : impossible. Plan B : 7 résistances soudées sur les fils du keypad pour le lire sur la seule entrée analogique A2 (montage classique « keypad sur une broche ») |
-| Conflit d'adresse I2C (PCF8574A et LCD à 0x3E) | faible | Régler les cavaliers A0–A2 ; scan du bus au démarrage |
-| Touches perdues si le LCD occupe le bus | faible | Écritures LCD découpées ; réveil du clavier par INT ; mesure E7 |
+| Tensions du clavier trop proches ou bruitées (courant de la LED Bar et du buzzer sur le 5 V) | faible | Table relevée sur notre exemplaire, médiane sur 3 lectures, mesure E7 |
 | RAM du Uno saturée | moyenne | Fusion de tâches, driver TWI maison, glyphes en PROGMEM |
 | Octets corrompus sur l'I2C (étirement d'horloge du RPi) | élevée sans précaution | 50 kHz, réponses pré-calculées, CRC + nouvelle tentative côté RPi |
 | 5 V sur l'I2C du RPi | — | Adaptateur de niveau (à demander ou acheter) |
@@ -486,8 +482,8 @@ Peut être réel (petit VPS) ou simulé sur un portable (`docker compose`), comm
 
 | Semaine | Phase | Livrables |
 |---|---|---|
-| S1 | 1 : bare-metal | Boutons PCINT2 + anti-rebond, Timer1 CTC, LED, buzzer avec `tone()`. **Commande du PCF8574** (ou plan B) : premier test du keypad et de son balayage |
-| S2 | 2 : drivers | **Validation du cas d'usage par l'équipe enseignante.** Drivers ultrason (INT0 + Timer1), ADC filtré (cadran, lumière), I2C logiciel pour le LCD, le DIP et le clavier (PCF8574 + INT), afficheur 4 chiffres (TM1637), LED Bar (MY9221) |
+| S1 | 1 : bare-metal | Boutons PCINT2 + anti-rebond, Timer1 CTC, LED, buzzer avec `tone()`. Premier test du keypad analogique : **relevé des tensions des 12 touches** |
+| S2 | 2 : drivers | **Validation du cas d'usage par l'équipe enseignante.** Drivers ultrason (INT0 + Timer1), ADC filtré (cadran, lumière, clavier), I2C logiciel pour le LCD et le DIP, afficheur 4 chiffres (TM1637), LED Bar (MY9221) |
 | S3 | 2 : FreeRTOS | Migration vers les tâches, chaîne de sécurité, **première mesure de latence**, budget mémoire |
 | S4 | 2 : I2C | Esclave + registres sur l'Arduino, maître sur le RPi, adaptateur de niveau, CRC |
 | S5 | 3 : passerelle | Démon de passerelle, MQTT, filtrage, stockage et renvoi ; cloud : générateur et manuel |
@@ -503,19 +499,3 @@ Rendu de l'article : **avant le 17 janvier 2027 à 22h00**, 10 pages maximum.
 2. FreeRTOS, chaîne temps réel, campagnes de mesure ;
 3. I2C et passerelle RPi (optimisation) ;
 4. Cloud : générateur de manuel, pages web, classement.
-
----
-
-## 13. Matériel à ajouter (hors kit)
-
-| Élément | Nécessité | Usage |
-|---|---|---|
-| Adaptateur de niveau I2C 3,3 V ↔ 5 V | **Fortement recommandé** | Protéger le RPi |
-| Câbles Grove → jumper | Disponibles | LED sur D9–D11, afficheur sur D12/D13, PCF8574 vers le hub et INT vers A2, I2C vers le RPi |
-| Hub I2C Grove 4 ports (ou répartiteur sur plaque d'essai) | **Nécessaire** | LCD, DIP et PCF8574 sur le port D7 |
-| Module PCF8574 (extension I2C 8 E/S, ~2 €) | **Nécessaire** | Brancher le keypad 3×4 (7 fils) sans broche de l'Arduino. Les « backpacks » I2C de LCD en sont aussi, mais leurs broches sont souvent soudées à un connecteur 16 points : prendre un module nu |
-| Analyseur logique USB 8 voies | Recommandé | Mesure externe de la latence (E1) |
-| Impression 3D (boîtier avec découpe pour le keypad) | Nécessaire | |
-| Batterie USB | Recommandé | Bombe autonome en Wi-Fi |
-| Haut-parleur jack | Option | Son d'explosion côté RPi |
-| Accéléromètre (si dispo à l'Ubiquarium) | Option | Rétablir le module « Stabilisateur » d'origine (les accéléromètres Grove sont en I2C : sur le hub du bus logiciel) |

@@ -62,7 +62,7 @@ BREAKING CHANGE: the RPi gateway must read 9 bytes instead of 8.
 ### Examples
 
 ```
-feat(keypad): read the 3x4 keypad through the PCF8574 interrupt
+feat(keypad): decode the analog keypad on A2
 fix(lcd): restore the software I2C bus after a NACK
 docs: update the pinout table in CONCEPTION.md
 perf(perimeter): move the ultrasonic ping to Timer1
