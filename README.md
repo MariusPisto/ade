@@ -4,7 +4,7 @@ Cooperative game built around a fake bomb to defuse. Project for the course
 *OS embarqués pour l'Edge Computing* (SI5/M2, Université Côte d'Azur, 2026-2027).
 
 - An **Arduino Uno** running **FreeRTOS** acts as an autonomous smart sensor/actuator (the bomb).
-- A **Raspberry Pi** is the edge gateway: I2C master (polling only), relaying to a cloud over MQTT/HTTP.
+- A **Raspberry Pi** is the edge node: I2C master (polling only), local Wi-Fi server for the expert's manual and the hacker console, and relay of the game history to the cloud over MQTT.
 
 ## Repository
 
