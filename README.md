@@ -10,6 +10,7 @@ Cooperative game built around a fake bomb to defuse. Project for the course
 
 | File | Content |
 |---|---|
+| `code/` | Arduino firmware (FreeRTOS, drivers): see `code/README.md` |
 | `CONCEPTION.tex` | Detailed design (LaTeX): game rules, modules, pinout with wiring diagram, FreeRTOS tasks, I2C protocol, gateway, experiments, schedule |
 | `CONCEPTION.pdf` | Compiled design document |
 | `components.txt` | Inventory of the available hardware |

@@ -6,3 +6,6 @@
 *.synctex.gz
 *.fls
 *.fdb_latexmk
+
+# Firmware build output
+code/build/
