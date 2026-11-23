@@ -966,7 +966,7 @@ La bombe reprend l'allure des charges C4 des jeux de tir tactiques (comme dans C
 
 \textbf{Le RTOS est obligatoire} (consigne du projet). FreeRTOS apporte ici des tâches à priorités fixes (la chaîne de sécurité préempte tout le reste), des notifications depuis les ISR pour réagir en quelques dizaines de µs, des files pour faire circuler les événements sans variables partagées, et des outils de mesure (charge CPU, hauteur des piles). La comparaison avec une version \emph{superloop} sans RTOS (\S\ref{sec:mesure}) chiffre ce qu'il apporte.
 
-Bibliothèque \code{Arduino_FreeRTOS} (feilipu). Son tick par défaut vient du \textbf{watchdog (\env 15~ms)}, ce qui laisse les Timer1 et Timer2 libres.
+Noyau \textbf{FreeRTOS V11.1.0 fourni avec les ressources du cours}, port \code{GCC/ATMega328}, copié dans \code{code/lib/FreeRTOS-Kernel}. Ce port tire son tick du \textbf{Timer1 (1~ms)}. Le firmware est en C sans cœur Arduino, avec allocation statique uniquement.
 
 \subsection{Répartition des timers}
 \label{sec:timers}
@@ -976,10 +976,9 @@ Bibliothèque \code{Arduino_FreeRTOS} (feilipu). Son tick par défaut vient du \
 \toprule
 \textbf{Timer} & \textbf{Usage} & \textbf{Justification} \\
 \midrule
-Timer0 & \code{millis()} / \code{micros()} (Arduino) & Utilisé par le cœur Arduino \\
-Timer1 & CTC, période 20~ms $\to$ \textbf{déclenche le ping ultrason} ; prescaler 8 $\to$ \textbf{0,5~µs} de résolution pour horodater l'écho & Échantillonnage du capteur critique indépendant du tick FreeRTOS \\
+Timer0 & Libre & Pas de \code{millis()} : le temps vient du tick FreeRTOS. Réserve (ex. échantillonnage rapide de la cellule, \S\ref{sec:budget}) \\
+Timer1 & \textbf{Tick FreeRTOS} : CTC, prescaler 64, période 1~ms. Son compteur \code{TCNT1} avance toutes les \textbf{4~µs} & Imposé par le port du cours. Le hook du tick \textbf{déclenche le ping ultrason} tous les 20 ticks, et (tick, \code{TCNT1}) horodate l'écho à 4~µs près (\env 0,7~mm) \\
 Timer2 & \code{tone()} du buzzer (notes, sirène, mélodie) & Réservé au buzzer. Son interruption (une par demi-période du son) ajoute un peu de gigue : à mesurer (\S\ref{sec:mesure}) \\
-WDT & Tick FreeRTOS & Valeur par défaut de la bibliothèque \\
 \bottomrule
 \end{tabularx}
 \end{center}
@@ -992,8 +991,8 @@ WDT & Tick FreeRTOS & Valeur par défaut de la bibliothèque \\
 \toprule
 \textbf{ISR} & \textbf{Source} & \textbf{Travail (minimal)} \\
 \midrule
-\code{TIMER1_COMPA} & toutes les 20~ms & si la ligne écho est revenue à 0 : impulsion de 10~µs, passage en entrée, arme INT0 \\
-\code{INT0} & front de l'écho & horodate (TCNT1) ; sur le front descendant : calcule la distance, si $<$ D deux fois de suite $\to$ \code{vTaskNotifyGiveFromISR(tSafety)} + \code{portYIELD_FROM_ISR()} \\
+\code{TIMER1_COMPA} & tick, toutes les 1~ms & ISR du port : incrémente le tick, change de contexte si besoin. Hook du tick : tous les 20 ticks, si la ligne écho est revenue à 0, impulsion de 10~µs, passage en entrée, arme INT0 ; scan des boutons (rattrape un relâchement masqué par l'anti-rebond) \\
+\code{INT0} & front de l'écho & horodate (tick, \code{TCNT1}), en ajoutant un tick si \code{OCF1A} est levé (tick en attente) ; sur le front descendant : calcule la distance, si $<$ D deux fois de suite $\to$ \code{vTaskNotifyGiveFromISR(tSafety)} + \code{taskYIELD()} (le port n'a pas de \code{portYIELD_FROM_ISR}) \\
 \code{PCINT2} & boutons Grove & lit \code{PIND}, anti-rebond 30~ms par horodatage, envoie l'événement dans \code{qEvents} \\
 \code{TIMER2_COMPA} & \code{tone()} & bascule la broche du buzzer \\
 \code{TWI} (Wire) & RPi & \code{onReceive} : copie dans un buffer + notifie \code{tComm}. \code{onRequest} : renvoie un buffer \textbf{déjà prêt} \\
@@ -1109,7 +1108,7 @@ Dans \code{RUNNING}, sous-état \code{module_courant} (ordre donné par la confi
     node distance=0.55cm,
   ]
   \node[box, fill=red!8] (intr) {intrusion};
-  \node[box, right=of intr] (ping) {ping Timer1\\($\leq$ 20~ms)};
+  \node[box, right=of intr] (ping) {ping (hook du tick)\\($\leq$ 20~ms)};
   \node[box, right=of ping] (echo) {écho\\($\leq$ 1,2~ms pour 20~cm)};
   \node[box, right=of echo] (isr) {ISR INT0};
   \node[box, below=0.9cm of intr] (ech2) {2\textsuperscript{e} échantillon\\(+20~ms)};
@@ -1138,8 +1137,8 @@ Dans \code{RUNNING}, sous-état \code{module_courant} (ordre donné par la confi
 Attente du prochain ping & 20~ms \\
 Temps de vol pour D = 20~cm & 1,2~ms \\
 Confirmation sur un 2\textsuperscript{e} échantillon & 20~ms + 1,2~ms \\
-ISR + \code{portYIELD_FROM_ISR} + changement de contexte & \env 50~µs (à mesurer) \\
-Plus longue section masquée (ISR TWI, ISR \code{tone()}, sections critiques FreeRTOS) & \env 100~µs (à mesurer) \\
+ISR + \code{taskYIELD} + changement de contexte & \env 50~µs (à mesurer) \\
+Plus longue section masquée (ISR du tick, ISR TWI, ISR \code{tone()}, sections critiques FreeRTOS) & \env 100~µs (à mesurer) \\
 Écriture GPIO dans \code{tSafety} & $<$ 5~µs \\
 \midrule
 \textbf{Total} & \textbf{$\approx$ 42,6~ms $<$ 50~ms} \\
@@ -1147,7 +1146,7 @@ Plus longue section masquée (ISR TWI, ISR \code{tone()}, sections critiques Fre
 \end{tabularx}
 \end{center}
 
-Le chemin critique \textbf{ne dépend pas du tick} FreeRTOS : la notification depuis l'ISR préempte immédiatement. Le tick imprécis du watchdog ne pèse donc pas sur l'échéance. C'est un argument à mettre en avant à l'oral.
+Le chemin critique \textbf{ne dépend pas de l'ordonnancement périodique} : la notification depuis l'ISR préempte immédiatement, sans attendre le prochain tick. Le tick ne sert qu'à cadencer le ping, depuis son hook (contexte d'interruption), donc indépendamment de la charge des tâches. C'est un argument à mettre en avant à l'oral. Contrepartie du port du cours : un tick à 1~kHz coûte une interruption par milliseconde (quelques \% du CPU, à mesurer avec le compteur de charge de la tâche idle).
 
 \textbf{Hypothèse environnementale à écrire dans l'article} : le Grove Ultrasonic n'a qu'une broche (déclenchement et écho). On ne peut pas relancer un ping tant que l'écho précédent n'est pas retombé. Avec un plafond à 2,5~m, l'écho le plus long dure \env 15~ms, ce qui reste compatible avec une période de 20~ms. Dans un grand hall, la période s'allonge et l'échéance peut sauter. La documentation conseille $\geq$ 60~ms entre deux mesures : nous descendons à 20~ms en connaissance de cause et \textbf{mesurons le taux de faux positifs}. Bonne matière pour l'analyse critique.
 
@@ -1155,14 +1154,14 @@ Le chemin critique \textbf{ne dépend pas du tick} FreeRTOS : la notification de
 
 \begin{itemize}
   \item confirmation sur \textbf{un seul} échantillon (budget $\approx$ 21~ms), au prix de plus de faux positifs ;
-  \item ou contrainte dure portée par la \textbf{cellule photosensible} (\og ne jamais masquer la cellule hors du module Occultation\fg{}), échantillonnée à 1~kHz par le Timer1 : détection en quelques ms. L'ultrason devient alors une contrainte souple.
+  \item ou contrainte dure portée par la \textbf{cellule photosensible} (\og ne jamais masquer la cellule hors du module Occultation\fg{}), échantillonnée à 1~kHz dans le hook du tick (ou par le Timer0, libre) : détection en quelques ms. L'ultrason devient alors une contrainte souple.
 \end{itemize}
 
 \subsection{Mesure (pour l'article)}
 \label{sec:mesure}
 
 \begin{enumerate}
-  \item \textbf{Instrumentation interne} : \code{TCNT1} lu au front d'écho qui valide la faute, puis au moment où \code{tSafety} écrit la LED. Min, moyenne, max et compteur de dépassements dans le registre DIAG, lu par le RPi et envoyé au cloud.
+  \item \textbf{Instrumentation interne} : horodatage (tick, \code{TCNT1}), à 4~µs près, au front d'écho qui valide la faute, puis au moment où \code{tSafety} écrit la LED. Min, moyenne, max et compteur de dépassements dans le registre DIAG, lu par le RPi et envoyé au cloud.
   \item \textbf{Mesure externe} avec un \textbf{analyseur logique} USB (clone Saleae 8 voies à \env 10~€, fortement recommandé) : voie 1 sur D2 (écho), voie 2 sur D9 (LED rouge). Histogramme sur quelques milliers de fautes provoquées.
   \item \textbf{Scénarios de charge} : (a) repos ; (b) LCD qui rafraîchit en continu ; (c) RPi qui interroge à 100~Hz ; (d) buzzer qui joue des notes (ISR du Timer2) + frappe rapide au clavier et aux boutons ; (e) tout à la fois + perturbations du hacker.
   \item \textbf{Comparaison avec une version \emph{superloop} naïve} (\code{loop()} avec \code{pulseIn()} bloquant + LCD + Wire) : montrer qu'elle \textbf{rate l'échéance} sous charge. C'est la justification chiffrée de l'usage du RTOS demandée pour l'oral.
@@ -1356,7 +1355,7 @@ Cas d'usage refusé en semaine 2 & faible & Préparer une fiche d'une page (conc
 \textbf{Semaine} & \textbf{Phase} & \textbf{Livrables} \\
 \midrule
 S1 & 1 : bare-metal & Boutons PCINT2 + anti-rebond, Timer1 CTC, LED, buzzer avec \code{tone()}. Premier test du keypad analogique : \textbf{relevé des tensions des 12 touches} \\
-S2 & 2 : drivers & \textbf{Validation du cas d'usage par l'équipe enseignante.} Drivers ultrason (INT0 + Timer1), ADC filtré (cadran, lumière, clavier), I2C logiciel pour le LCD et le DIP, afficheur 4 chiffres (TM1637), LED Bar (MY9221) \\
+S2 & 2 : drivers & \textbf{Validation du cas d'usage par l'équipe enseignante.} Drivers ultrason (INT0, horodatage sur le Timer1 à 1~ms, futur tick FreeRTOS), ADC filtré (cadran, lumière, clavier), I2C logiciel pour le LCD et le DIP, afficheur 4 chiffres (TM1637), LED Bar (MY9221) \\
 S3 & 2 : FreeRTOS & Migration vers les tâches, chaîne de sécurité, \textbf{première mesure de latence}, budget mémoire \\
 S4 & 2 : I2C & Esclave + registres sur l'Arduino, maître sur le RPi, adaptateur de niveau, CRC \\
 S5 & 3 : passerelle & Démon du RPi : I2C, générateur, manuel et console du hacker servis en local (Wi-Fi, WebSocket) \\
