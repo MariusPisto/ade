@@ -1,0 +1,859 @@
+\documentclass[11pt,a4paper]{article}
+
+% Compile avec pdflatex (Overleaf) comme avec XeLaTeX/LuaLaTeX (Tectonic)
+\usepackage{iftex}
+\ifPDFTeX
+  \usepackage[T1]{fontenc}
+  \usepackage[utf8]{inputenc}
+  \usepackage{lmodern}
+\else
+  \usepackage{fontspec}
+\fi
+\usepackage[french]{babel}
+\usepackage[a4paper,margin=2.2cm]{geometry}
+\usepackage{microtype}
+\usepackage{parskip}
+\usepackage{xcolor}
+\usepackage{array,tabularx,booktabs}
+\usepackage{enumitem}
+\usepackage{pdflscape}
+\usepackage{caption}
+\usepackage{tikz}
+\usetikzlibrary{positioning,arrows.meta,calc,babel}
+\setlength{\emergencystretch}{2.5em}
+\usepackage[colorlinks=true,linkcolor=blue!50!black,urlcolor=blue!50!black]{hyperref}
+
+\setlist{itemsep=2pt,topsep=3pt}
+\newcolumntype{L}{>{\raggedright\arraybackslash}X}
+\newcolumntype{P}[1]{>{\raggedright\arraybackslash}p{#1}}
+\renewcommand{\arraystretch}{1.25}
+
+% Code en ligne : les caractères spéciaux (_ { } :) sont imprimés tels quels.
+\newcommand{\code}[1]{\texttt{\detokenize{#1}}}
+\newcommand{\env}{\mbox{$\sim$}}
+% Extraits du manuel de l'expert
+\newenvironment{manuel}{\begin{quote}\itshape}{\end{quote}}
+
+\title{\textbf{ADE (Apprenti Démineur de l'Extrême)}\\[4pt]\large Document de conception}
+\author{Lorenzo Baladier \and Marius Pistoresi}
+\date{Projet \emph{OS embarqués pour l'Edge Computing} --- SI5/M2, Université Côte d'Azur, 2026-2027}
+
+\begin{document}
+
+\maketitle
+
+ADE est un jeu de désamorçage coopératif, réalisé pour le projet \emph{OS embarqués pour l'Edge Computing} (SI5/M2, 2026-2027).
+Smart sensor/actuator Arduino Uno + FreeRTOS, passerelle Raspberry Pi (maître I2C), service cloud.
+
+\tableofcontents
+
+% =====================================================================
+\setcounter{section}{-1}
+\section{Ce qu'il faut savoir avant de lire}
+\label{sec:avant}
+
+L'idée de départ s'appuyait sur des capteurs \textbf{absents de notre kit} : IMU, capteur de bruit, capteur de couleur, capteur tactile, NFC, anneau de LED, émetteur 433~MHz. Ce document reprend le concept avec le matériel de \code{components.txt} :
+
+\begin{center}\small
+\begin{tabularx}{\linewidth}{LLL}
+\toprule
+\textbf{Capteurs} & \textbf{Actionneurs} & \textbf{Infra} \\
+\midrule
+Télémètre à ultrasons & Écran LCD 16x2 (I2C) & Arduino Uno \\
+Potentiomètre rotatif & Afficheur 4 chiffres (TM1637) & Grove Base Shield v2 \\
+Capteur de lumière v1.2 & LED Bar 10 segments (MY9221) & Câbles jumper (Grove $\leftrightarrow$ broches, RPi) \\
+3 boutons Grove & LED rouge, verte, bleue & (Raspberry Pi, fourni à part) \\
+Interrupteur DIP 6 positions (I2C) & Buzzer & \\
+Keypad 3×4 analogique (0--9, \code{*}, \texttt{\#}, hors Grove), une seule sortie analogique & & \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+L'\textbf{émetteur et le récepteur infrarouges} du kit ne sont \textbf{pas utilisés}. L'émetteur exige D3 et le Timer2, pris par le buzzer, il n'y a plus de broches, et ils portaient le module le plus risqué (une barrière IR). Tous les autres composants ont un rôle précis.
+
+\paragraph{Correspondance avec l'idée d'origine}
+
+\begin{center}\small
+\begin{tabularx}{\linewidth}{P{3.4cm}LL}
+\toprule
+\textbf{Idée d'origine} & \textbf{Remplacé par} & \textbf{Ce qui change} \\
+\midrule
+Stabilisateur (IMU, inclinaison $>$ 20°) & \textbf{Périmètre} : ultrasons, zone interdite autour de \og l'œil\fg{} de la bombe & C'est ce module qui porte la contrainte dure de 50~ms \\
+Silence (capteur de bruit) & \textbf{Occultation} : capteur de lumière, à masquer N fois & Même esprit (\og faire un geste au bon moment\fg{}) \\
+Cartouches (capteur de couleur) & \emph{retiré} & Pas de capteur de couleur ; la variante à barrière IR a été abandonnée au profit du clavier \\
+Clavier (tactile) & \textbf{Clavier} : keypad 3×4 analogique, lu sur une seule entrée analogique (A2) & Un code déduit d'une règle du manuel, comme dans l'idée d'origine \\
+Clé NFC & \textbf{Fréquence} : potentiomètre et LCD & Le \no{} de série affiché reste au cœur des règles \\
+\emph{(nouveau)} & \textbf{Relais} : 3 boutons Grove sous 3 LED de couleur & Module de mémoire en 3 étapes \\
+\emph{(nouveau)} & \textbf{Détonateur} : interrupteur DIP 6 positions & Code binaire à composer, interrupteurs piégés \\
+Afficheur du compte à rebours & \textbf{Afficheur 4 chiffres} \code{MM:SS}, puis \code{SS:cc} sous la minute & Le chrono \og de film\fg{}, toujours visible \\
+Anneau LED (fautes, état) & \textbf{LED Bar} : jauge de stabilité & Se vide à chaque faute ; devient la mèche pendant la finale \\
+Bouton LED \og fil rouge\fg{} & \textbf{Finale} : maintenir le bon bouton, relâcher au bon chiffre & \\
+Lampe 433~MHz & Buzzer (vraies notes), stroboscope des LED, son d'explosion joué par le RPi & \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+% =====================================================================
+\section{Le jeu}
+\label{sec:jeu}
+
+\paragraph{Rôles}
+
+\begin{itemize}
+  \item \textbf{Démineur} : a la bombe entre les mains. Il voit le LCD, l'afficheur, les LED, entend le buzzer. N'a pas le manuel.
+  \item \textbf{Expert} : a le manuel sur son téléphone (page web générée par le cloud). Ne voit pas la bombe.
+  \item \textbf{Saboteur} (optionnel) : console web à distance. Peut accélérer le chrono, brouiller l'affichage ou déclencher une fausse alarme, avec un budget limité.
+\end{itemize}
+
+\paragraph{Principe anti-mémorisation} Pour chaque partie, le cloud tire une \textbf{graine}. À partir de cette graine, un générateur pseudo-aléatoire déterministe produit à la fois :
+
+\begin{enumerate}
+  \item le \textbf{manuel} (tables, mots, ordre des modules, conditions) envoyé au téléphone de l'expert ;
+  \item la \textbf{configuration} de la bombe (stimuli à afficher + réponses attendues) envoyée à l'Arduino via MQTT $\to$ RPi $\to$ I2C. Pendant le transfert, la LED Bar se remplit page par page.
+\end{enumerate}
+
+L'Arduino ne connaît \textbf{pas les règles}, seulement les stimuli et les réponses attendues. Le firmware reste petit (2~Ko de RAM), et la solution ne sort jamais de la bombe.
+
+\paragraph{Déroulement}
+
+\begin{enumerate}
+  \item L'équipe crée une partie sur le site (niveau choisi). Le cloud génère graine, manuel et configuration.
+  \item La configuration descend jusqu'à la bombe. Le LCD affiche \code{ARMEE} et le \textbf{numéro de série} (ex. \code{KX4-7B2}), l'afficheur 4 chiffres la durée (\code{05:00}).
+  \item Tant qu'un interrupteur DIP est sur ON, le LCD affiche \code{DIP -> OFF} et la bombe refuse de démarrer. Une fois tout à OFF, le démineur appuie 1~s sur les 3 boutons Grove à la fois : le chrono démarre.
+  \item Le module \textbf{Périmètre} est actif en permanence. Les autres modules s'enchaînent dans l'ordre indiqué par le manuel ; le LCD affiche le module en cours.
+  \item Tous les modules sont résolus : la \textbf{finale} (fil rouge). Réussie : \code{DESAMORCEE}. Chrono à 0 ou trop de fautes : \code{BOOM}.
+  \item Le score part au classement.
+\end{enumerate}
+
+\paragraph{Retours pendant la partie}
+
+Le LCD est entièrement réservé aux consignes des modules : le chrono est sur l'afficheur 4 chiffres et les fautes sur la LED Bar. Le Timer2 étant libre, le buzzer joue de \textbf{vraies notes} avec \code{tone()} (hauteur variable, sirène, mélodie).
+
+\begin{center}\footnotesize
+\begin{tabularx}{\linewidth}{P{2.1cm}LP{1.85cm}P{2.2cm}P{1.9cm}L}
+\toprule
+\textbf{Événement} & \textbf{Afficheur 4 chiffres} & \textbf{LED Bar} & \textbf{LCD} & \textbf{LED} & \textbf{Buzzer} \\
+\midrule
+Tic du chrono & \code{03:27}, deux-points qui clignotent ; \code{SS:cc} sous la minute & --- & consigne du module & --- & tic bref chaque seconde, puis 2/s sous 30~s \\
+Faute & --- & perd des segments & \code{FAUTE !} 1~s & flash rouge 300~ms & \code{BZZT} grave 200~ms \\
+Module résolu & --- & --- & \code{OK} puis \code{MODULE 3/6} & flash vert & double bip aigu \\
+Sabotage \og accélération\fg{} & défile plus vite & --- & rien (c'est le but) & --- & les tics s'accélèrent : les joueurs l'\textbf{entendent} \\
+Sabotage \og brouillage\fg{} & segments au hasard pendant 5~s : \textbf{le chrono disparaît} & --- & caractères au hasard & --- & --- \\
+Explosion & \code{8888} qui clignote & stroboscope & \code{*** BOOM ***} & stroboscope des 3 LED & sirène montante 2~s \\
+Victoire & temps restant figé & vert fixe & \code{DESAMORCEE} & vert fixe & mélodie \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+Chaque faute accélère aussi le chrono de +10~\% (réglable par niveau).
+
+\paragraph{La LED Bar, jauge de stabilité}
+
+\begin{itemize}
+  \item Pleine au départ. Chaque faute éteint \texttt{10 / (fautes tolérées + 1)} segments. Vide : explosion.
+  \item Pendant la finale, elle devient une \textbf{mèche} qui se consume au rythme du chrono.
+  \item Niveau Recrue seulement (mode assisté) : elle clignote quand un objet approche à moins de 2 × D de l'œil du Périmètre.
+\end{itemize}
+
+% =====================================================================
+\section{Les modules}
+\label{sec:modules}
+
+Pour chaque module : matériel, ce que voit le démineur, extrait de manuel \textbf{généré} (les valeurs changent à chaque graine), traitement local fait par l'Arduino.
+
+\subsection{Périmètre (ultrasons) : contrainte temps réel dure}
+\label{sec:perimetre}
+
+\begin{itemize}
+  \item \textbf{Matériel} : télémètre à ultrasons sur la face supérieure (\og l'œil\fg{} de la bombe). Actionneurs : LED rouge et buzzer.
+  \item \textbf{Règle} : aucun objet ne doit entrer à moins de \textbf{D~cm} de l'œil. Le seuil D vient du niveau et du manuel.
+  \item \textbf{Extrait de manuel} : \emph{\og L'œil surveille une zone de 10~cm si le numéro de série se termine par un chiffre pair, 20~cm sinon. Toute intrusion est une faute.\fg{}}
+  \item \textbf{Piège volontaire} : la cellule photosensible (module Occultation) est placée à côté de l'œil. Pour la masquer, il faut arriver \textbf{par le côté}, et seul le manuel le dit.
+  \item \textbf{Exigence} : une intrusion est détectée et signalée (LED rouge + buzzer) en \textbf{moins de 50~ms}, quoi que fassent les autres tâches (LCD, I2C, saboteur…). Budget et mesure au \S\ref{sec:rt}.
+  \item \textbf{Traitement local} : mesure du temps de vol par interruption (pas de \code{pulseIn} bloquant), confirmation sur 2 échantillons consécutifs pour éviter les faux positifs, rejet des valeurs aberrantes ($<$ 2~cm).
+\end{itemize}
+
+\subsection{Fréquence (potentiomètre + LCD + bouton)}
+\label{sec:frequence}
+
+\begin{itemize}
+  \item \textbf{Matériel} : potentiomètre (le \og cadran\fg{}), LCD, bouton sous la LED verte pour valider.
+  \item \textbf{Le démineur voit} : un mot en ligne 2 (ex. \code{ORAGE}) et la fréquence courante, mise à jour en direct quand il tourne le cadran (\code{3.40 MHz}, de 3.00 à 4.00~MHz par pas de 0.05).
+  \item \textbf{Extrait de manuel} :
+  \begin{manuel}
+    Trouvez le mot affiché. Si le numéro de série contient une voyelle, lisez la colonne B, sinon la colonne A. Réglez le cadran puis appuyez sous la LED verte.
+
+    \upshape\small
+    \begin{tabular}{lcc}
+      \toprule
+      \textbf{Mot} & \textbf{A} & \textbf{B} \\
+      \midrule
+      ORAGE & 3.25 & 3.70 \\
+      ORANGE & 3.60 & 3.15 \\
+      CIGALE & 3.55 & 3.10 \\
+      SIGNAL & 3.05 & 3.85 \\
+      \bottomrule
+    \end{tabular}
+  \end{manuel}
+  Les mots sont choisis \textbf{proches à l'oral} (ORAGE / ORANGE, CIGALE / SIGNAL) : les joueurs doivent épeler.
+  \item \textbf{Traitement local} : moyenne glissante sur l'ADC, \textbf{hystérésis} entre crans (pas de valeur qui saute entre 3.40 et 3.45), quantification.
+\end{itemize}
+
+\subsection{Occultation (capteur de lumière + LED bleue)}
+\label{sec:occultation}
+
+\begin{itemize}
+  \item \textbf{Matériel} : capteur de lumière (la \og cellule\fg{}), LED bleue.
+  \item \textbf{Le démineur voit} : la LED bleue clignote par salves de N éclairs, séparées par une pause.
+  \item \textbf{Extrait de manuel} : \emph{\og Comptez les éclairs d'une salve (N). Si N + le dernier chiffre du \no{} de série est pair, masquez la cellule 2 fois. Sinon, masquez-la N fois. Si vous avez déjà fait une faute, ajoutez 1.\fg{}} La saisie est validée seule après 3~s de lumière continue.
+  \item \textbf{Traitement local} (c'est du vrai \emph{edge processing}) :
+  \begin{itemize}
+    \item \textbf{calibration automatique} de la lumière ambiante à l'armement (moyenne sur 1~s) ;
+    \item seuil adaptatif à 50~\% de l'ambiant, avec hystérésis ;
+    \item une occultation compte si elle dure \textbf{au moins 300~ms} (un passage de main rapide ne compte pas) ;
+    \item suivi lent de l'ambiant hors occultation (quelqu'un allume la lumière de la salle).
+  \end{itemize}
+\end{itemize}
+
+\subsection{Clavier (keypad 3×4 : 0--9, *, \#)}
+\label{sec:clavier}
+
+\begin{itemize}
+  \item \textbf{Matériel} : keypad 3×4 \textbf{analogique} (Aihasd, 12 touches). Un pont de résistances intégré donne une tension différente pour chaque touche sur une sortie unique. 3 fils : VCC, GND, OUT. Coût en broches de l'Arduino : \textbf{une seule (A2)}.
+  \item \textbf{Le démineur voit} : \code{LOT 5829} en ligne 1 du LCD ; ce qu'il tape s'affiche en ligne 2 (\code{CODE: 31__}).
+  \item \textbf{Extrait de manuel} :
+  \begin{manuel}
+    Prenez le numéro de lot. Si son dernier chiffre est pair, remplacez chaque chiffre par sa moitié (arrondie en dessous) ; sinon, inversez l'ordre des chiffres. Si le numéro de série contient une voyelle, ajoutez 1 au premier chiffre (9 devient 0). Tapez le code puis \texttt{\#}. \code{*} efface.
+  \end{manuel}
+  \textbf{Variante \og code croisé\fg{}} (niveau Expert) : \emph{\og Les deux premiers chiffres du code sont les décimales de la fréquence réglée au module Fréquence.\fg{}} Le démineur doit s'en souvenir : les modules ne sont plus indépendants.
+  \item \textbf{Câblage} : VCC $\to$ 5~V, GND $\to$ GND, OUT $\to$ A2, par jumpers. VCC est la référence de l'ADC (5~V) : la tension lue ne dépend donc pas des variations de l'alimentation.
+  \item \textbf{Traitement local} :
+  \begin{itemize}
+    \item \code{tSense} lit A2 toutes les 20~ms, avec le cadran et la cellule (une conversion ADC prend \env 110~µs) ;
+    \item \textbf{table des 12 touches} : la valeur ADC (0--1023) est comparée à 12 fenêtres centrées sur la tension de chaque touche, plus celle du repos. La table est \textbf{relevée au montage} (tensions à mesurer sur notre exemplaire) et stockée en PROGMEM. Avec 12 touches, les niveaux sont espacés d'environ 80 pas d'ADC : la marge est large ;
+    \item \textbf{anti-rebond} : une touche est confirmée quand deux lectures consécutives tombent dans la même fenêtre (40~ms), et relâchée quand la valeur revient au repos. L'événement part dans \code{qEvents} ;
+    \item une valeur entre deux fenêtres (transition, ou deux touches à la fois qui donnent une tension intermédiaire) est ignorée et comptée dans le registre DIAG ;
+    \item pas d'interruption ni de bus : le clavier ne touche plus au bus I2C logiciel ;
+    \item mauvais code validé par \texttt{\#} : faute.
+  \end{itemize}
+\end{itemize}
+
+\subsection{Relais (3 boutons Grove + 3 LED) : module de mémoire}
+\label{sec:relais}
+
+\begin{itemize}
+  \item \textbf{Matériel} : 3 boutons Grove, chacun sous une LED (rouge, verte, bleue).
+  \item \textbf{Le démineur voit} : à chaque étape (3 étapes), une LED s'allume.
+  \item \textbf{Extrait de manuel} :
+  \begin{manuel}
+    Étape 1 : rouge $\to$ bouton sous la LED bleue ; vert $\to$ bouton du milieu ; bleu $\to$ même couleur.\\
+    Étape 2 : rouge $\to$ le bouton pressé à l'étape 1 ; vert $\to$ bouton de gauche ; bleu $\to$ bouton sous la LED rouge.\\
+    Étape 3 : …
+  \end{manuel}
+  Les règles renvoient aux étapes précédentes : l'expert doit suivre l'historique.
+  \item \textbf{Traitement local} : interruptions \emph{pin change} (PCINT2) et \textbf{anti-rebond} par horodatage dans l'ISR (exactement l'exercice de la phase 1).
+\end{itemize}
+
+\subsection{Détonateur (interrupteur DIP 6 positions)}
+\label{sec:detonateur}
+
+\begin{itemize}
+  \item \textbf{Matériel} : interrupteur DIP 6 positions, LCD, bouton du milieu pour valider.
+  \item \textbf{Le démineur voit} : \code{CANAL 27} sur le LCD. Tous les interrupteurs sont à OFF (vérifié avant le démarrage).
+  \item \textbf{Extrait de manuel} :
+  \begin{manuel}
+    Écrivez le canal en binaire sur 6 bits, l'interrupteur 1 étant le bit de poids fort. Si le numéro de série contient la lettre X, inversez tous les bits. Si vous avez déjà fait une faute, décalez le code d'un cran vers la droite.\\
+    Attention : basculer un interrupteur qui doit rester sur OFF déclenche une faute immédiate.
+  \end{manuel}
+  L'expert fait le calcul binaire et dicte \og haut, bas, bas, haut…\fg{}. Les erreurs de gauche/droite et d'inversion sont fréquentes, c'est voulu.
+  \item \textbf{Traitement local} :
+  \begin{itemize}
+    \item lecture du DIP par I2C (bus logiciel, \S\ref{sec:i2clog}) toutes les 50~ms, avec détection de changement ;
+    \item un interrupteur basculé alors que son bit attendu est 0 donne une faute tout de suite. C'est une échéance \textbf{souple} ($\approx$ 100~ms), à ne pas confondre avec celle du Périmètre ;
+    \item validation au bouton : compare les 6 bits au code attendu.
+  \end{itemize}
+  \item \textbf{Usage hors partie (option)} : bouton 1 maintenu au démarrage $\to$ l'Arduino lit le DIP comme \textbf{configuration d'atelier}. Interrupteur 1 : mode silencieux (pas de buzzer, pour travailler en salle). Interrupteur 2 : mode banc de mesure de latence. Interrupteurs 5--6 : adresse I2C esclave (0x42 à 0x45), pour brancher plusieurs bombes sur un même RPi.
+\end{itemize}
+
+\subsection{Finale : le fil rouge}
+\label{sec:finale}
+
+\begin{itemize}
+  \item Le LCD affiche \code{COUPEZ LE FIL}, les 3 LED s'allument, la LED Bar se transforme en mèche.
+  \item \textbf{Extrait de manuel} : \emph{\og Maintenez le bouton sous la LED bleue si vous avez 0 faute, sous la rouge sinon. Relâchez quand l'afficheur du chrono contient un 4.\fg{}} Sous la minute, l'afficheur montre les centièmes : un 4 y apparaît souvent, mais seul le démineur le voit, d'où la tension.
+  \item Relâcher au mauvais moment ou sur le mauvais bouton : faute, et on recommence la finale.
+\end{itemize}
+
+\subsection{Composition par niveau}
+\label{sec:niveaux}
+
+\begin{center}\small
+\begin{tabularx}{\linewidth}{P{1.7cm}LP{1.1cm}P{1.6cm}P{1.8cm}P{1.6cm}}
+\toprule
+\textbf{Niveau} & \textbf{Modules} & \textbf{Durée} & \textbf{Fautes tolérées} & \textbf{Seuil Périmètre} & \textbf{Saboteur} \\
+\midrule
+Recrue & Périmètre, Clavier, Relais (+ LED Bar en mode assisté) & 6~min & 3 & 10~cm & non \\
+Démineur & + Fréquence, Occultation & 5~min & 2 & 15~cm & optionnel \\
+Expert & + Détonateur (tous), Clavier en \og code croisé\fg{} & 4~min & 1 & 20~cm & oui \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+Tous ces paramètres sont réglables individuellement côté cloud (durée, nombre de modules, fautes, seuil, accélération par faute).
+
+% =====================================================================
+\section{Architecture matérielle}
+\label{sec:materiel}
+
+\subsection{Brochage (Arduino Uno + Grove Base Shield v2)}
+\label{sec:brochage}
+
+Le shield a 7 ports numériques (D2--D8), 4 analogiques (A0--A3), 4 I2C (tous reliés au bus A4/A5) et 1 UART. Un port Grove Dn donne accès à Dn (fil jaune) et Dn+1 (fil blanc). Ce qui n'a pas de port passe par des \textbf{câbles jumper}. Sur les 20 broches du Uno, \textbf{19 sont utilisées : seule A3 reste libre}. La figure~\ref{fig:brochage} montre le branchement de chaque broche.
+
+\begin{center}\small
+\begin{tabularx}{\linewidth}{P{1.5cm}P{4cm}P{3.2cm}L}
+\toprule
+\textbf{Broche} & \textbf{Module} & \textbf{Branchement} & \textbf{Pourquoi cette broche} \\
+\midrule
+D0 / D1 & \textbf{LED Bar} (données D0, horloge D1) & port \textbf{UART} & Seule paire libre. Coût : plus de port série dans le firmware final (voir plus bas) \\
+D2 & Ultrasons & port D2 & \textbf{INT0} : interruption externe dédiée, la plus précise pour horodater l'écho \\
+D3 & Buzzer & port D3 & \code{tone()} (Timer2) pour jouer des notes \\
+D4, D5, D6 & Boutons Grove 1, 2, 3 & ports D4, D5, D6 & \textbf{PCINT20--22} (groupe PCINT2, comme dans la phase 1) : une seule ISR pour les 3 boutons \\
+D7 / D8 & \textbf{Bus I2C logiciel} (SCL = D7, SDA = D8) $\to$ hub $\to$ LCD + DIP & \textbf{port D7} & Les deux broches forment un port Grove : le hub s'y branche directement. Voir \S\ref{sec:i2clog} \\
+D9, D10, D11 & LED rouge, verte, bleue & jumpers & Pas de port Grove sur D9--D13 \\
+D12 / D13 & \textbf{Afficheur 4 chiffres} (CLK D12, DIO D13) & jumpers & Dernière paire libre \\
+A0 & Potentiomètre & port A0 & ADC \\
+A1 & Capteur de lumière & port A1 & ADC \\
+A2 & \textbf{Keypad analogique} (sortie OUT) & jumper & ADC : chaque touche donne une tension différente \\
+A3 & \emph{libre} & --- & Réserve \\
+A4 / A5 & \textbf{I2C esclave vers le RPi} & port I2C ou jumpers vers GPIO2 (SDA) / GPIO3 (SCL) du RPi, via l'adaptateur de niveau & Seul contrôleur TWI matériel du Uno \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+\paragraph{Perte du port série} La LED Bar n'a que des entrées haute impédance, elle ne gêne pas le téléversement par USB. En revanche le firmware final ne peut plus utiliser \code{Serial}. Solution : un drapeau de compilation \code{DEBUG_SERIAL} qui désactive la LED Bar pendant le développement (on la débranche), et des \textbf{mesures qui passent par le registre DIAG} de l'I2C, donc par le RPi. Si l'équipe préfère garder le port série, c'est la LED Bar qu'il faut sacrifier : c'est le composant le moins indispensable.
+
+\paragraph{Courant} LED Bar pleine (\env 10 × 20~mA), afficheur, LCD et LED dépassent vite 300~mA. La LED Bar est réglée à mi-intensité (le MY9221 gère 8 bits de luminosité par segment), et l'Arduino est alimenté par un port USB capable de fournir 500~mA.
+
+% ---------------------------------------------------------------------
+% Schéma de câblage : une broche = un fil
+% ---------------------------------------------------------------------
+\begin{landscape}
+\begin{figure}[p]
+\centering
+\resizebox{\linewidth}{!}{%
+\begin{tikzpicture}[
+    font=\small,
+    pin/.style={circle, fill=black, inner sep=1.4pt},
+    mod/.style={draw, rounded corners=2pt, fill=white, align=center, inner sep=3pt, minimum height=0.55cm},
+    grove/.style={line width=1.1pt, draw=black!80},
+    jumper/.style={line width=1.1pt, draw=black!80, dash pattern=on 4pt off 2pt},
+    sig/.style={font=\scriptsize, above, inner sep=1.5pt},
+    role/.style={font=\scriptsize, text=black!55},
+  ]
+
+  % --- Carte Arduino Uno + shield --------------------------------------
+  \draw[fill=teal!8, draw=teal!60!black, line width=1pt, rounded corners=4pt] (0,0) rectangle (5.6,-10.4);
+  \node[align=center, text=teal!40!black] at (2.8,-9.15) {\textbf{Arduino Uno}\\Grove Base Shield v2\\[2pt]\scriptsize ATmega328P, 5~V};
+
+  % Broches numériques (côté gauche) : D0 en haut, D13 en bas
+  \foreach \i/\rl in {0/RX, 1/TX, 2/INT0, 3/Timer2, 4/PCINT20, 5/PCINT21, 6/PCINT22, 7/SCL log., 8/SDA log., 9/, 10/, 11/, 12/, 13/} {
+    \coordinate (D\i) at (0,{-0.6-0.7*\i});
+    \node[pin] at (D\i) {};
+    \node[anchor=west] at ($(D\i)+(0.12,0)$) {D\i};
+    \node[role, anchor=west] at ($(D\i)+(0.72,0)$) {\rl};
+  }
+
+  % Broches analogiques (côté droit)
+  \foreach \n/\y/\rl in {A0/-1.3/ADC, A1/-2.7/ADC, A2/-4.1/ADC, A3/-5.5/, A4/-6.9/SDA (TWI), A5/-7.6/SCL (TWI)} {
+    \coordinate (\n) at (5.6,\y);
+    \node[pin] at (\n) {};
+    \node[anchor=east] at ($(\n)+(-0.12,0)$) {\n};
+    \node[role, anchor=east] at ($(\n)+(-0.62,0)$) {\rl};
+  }
+
+  % --- Côté numérique ---------------------------------------------------
+  \node[mod, anchor=east, text width=2.7cm, minimum height=1.15cm] (ledbar)  at (-3,-0.95) {LED Bar\\(MY9221)};
+  \node[mod, anchor=east, text width=2.7cm] (us)     at (-3,-2.0)  {Ultrasons};
+  \node[mod, anchor=east, text width=2.7cm] (buzz)   at (-3,-2.7)  {Buzzer};
+  \node[mod, anchor=east, text width=2.7cm, minimum height=1.85cm] (btn) at (-3,-4.1) {3 boutons Grove\\[2pt]\scriptsize 1, 2, 3 (de haut en bas)};
+  \node[mod, anchor=east, text width=1.5cm, minimum height=1.3cm, draw=blue!60!black] (hub) at (-3,-5.85) {Hub I2C\\Grove};
+  \node[mod, anchor=east, text width=2.9cm, draw=blue!60!black] (lcd) at (-6.2,-5.3) {LCD 16x2 (0x3E)};
+  \node[mod, anchor=east, text width=2.9cm, draw=blue!60!black] (dip) at (-6.2,-6.4) {DIP 6 pos. (0x03)};
+  \node[mod, anchor=east, text width=2.7cm, draw=red!70!black]   (ledr) at (-3,-6.9) {LED rouge};
+  \node[mod, anchor=east, text width=2.7cm, draw=green!50!black] (ledv) at (-3,-7.6) {LED verte};
+  \node[mod, anchor=east, text width=2.7cm, draw=blue!70!black]  (ledb) at (-3,-8.3) {LED bleue};
+  \node[mod, anchor=east, text width=2.7cm, minimum height=1.15cm] (disp) at (-3,-9.35) {Afficheur 4 chiffres\\(TM1637)};
+
+  \draw[grove] (D0) -- node[sig] {DI \textperiodcentered{} port UART} (D0 -| ledbar.east);
+  \draw[grove] (D1) -- node[sig] {DCKI} (D1 -| ledbar.east);
+  \draw[grove] (D2) -- node[sig] {SIG \textperiodcentered{} port D2} (D2 -| us.east);
+  \draw[grove] (D3) -- node[sig] {SIG \textperiodcentered{} port D3} (D3 -| buzz.east);
+  \draw[grove] (D4) -- node[sig] {SIG \textperiodcentered{} port D4} (D4 -| btn.east);
+  \draw[grove] (D5) -- node[sig] {SIG \textperiodcentered{} port D5} (D5 -| btn.east);
+  \draw[grove] (D6) -- node[sig] {SIG \textperiodcentered{} port D6} (D6 -| btn.east);
+  \draw[grove, draw=blue!60!black] (D7) -- node[sig] {SCL \textperiodcentered{} port D7} (D7 -| hub.east);
+  \draw[grove, draw=blue!60!black] (D8) -- node[sig] {SDA} (D8 -| hub.east);
+  \draw[grove, draw=blue!60!black] (hub.west |- lcd.east) -- (lcd.east);
+  \draw[grove, draw=blue!60!black] (hub.west |- dip.east) -- (dip.east);
+  \draw[jumper, draw=red!70!black]   (D9)  -- node[sig] {jumper} (D9  -| ledr.east);
+  \draw[jumper, draw=green!50!black] (D10) -- node[sig] {jumper} (D10 -| ledv.east);
+  \draw[jumper, draw=blue!70!black]  (D11) -- node[sig] {jumper} (D11 -| ledb.east);
+  \draw[jumper] (D12) -- node[sig] {CLK} (D12 -| disp.east);
+  \draw[jumper] (D13) -- node[sig] {DIO} (D13 -| disp.east);
+
+  % --- Côté analogique --------------------------------------------------
+  \node[mod, anchor=west, text width=4cm] (pot)   at (8.6,-1.3) {Potentiomètre (cadran)};
+  \node[mod, anchor=west, text width=4cm] (light) at (8.6,-2.7) {Capteur de lumière v1.2};
+  \node[mod, anchor=west, text width=4cm] (kp)    at (8.6,-4.1) {Keypad 3×4 analogique\\[1pt]\scriptsize VCC $\to$ 5~V, GND $\to$ GND};
+  \node[role, anchor=west] at ($(A3)+(0.25,0)$) {libre (réserve)};
+  \node[mod, anchor=west, text width=2.4cm, minimum height=1.15cm, draw=violet!70!black] (lvl) at (8.6,-7.25) {Adaptateur de niveau 5~V $\leftrightarrow$ 3,3~V};
+  \node[mod, anchor=west, text width=2.4cm, minimum height=1.15cm, draw=violet!70!black] (rpi) at (13.8,-7.25) {\textbf{Raspberry Pi}\\(maître I2C)};
+  \node[role, anchor=north, align=center] at (rpi.south) {masse commune\\(broche 6 du RPi)};
+
+  \draw[grove]  (A0) -- node[sig] {SIG \textperiodcentered{} port A0} (A0 -| pot.west);
+  \draw[grove]  (A1) -- node[sig] {SIG \textperiodcentered{} port A1} (A1 -| light.west);
+  \draw[jumper] (A2) -- node[sig] {OUT \textperiodcentered{} jumper} (A2 -| kp.west);
+  \draw[jumper, draw=violet!70!black] (A4) -- node[sig] {SDA} (A4 -| lvl.west);
+  \draw[jumper, draw=violet!70!black] (A5) -- node[sig] {SCL} (A5 -| lvl.west);
+  \draw[jumper, draw=violet!70!black] (A4 -| lvl.east) -- node[sig] {GPIO2 \textperiodcentered{} br. 3} (A4 -| rpi.west);
+  \draw[jumper, draw=violet!70!black] (A5 -| lvl.east) -- node[sig] {GPIO3 \textperiodcentered{} br. 5} (A5 -| rpi.west);
+
+  % --- Légende ----------------------------------------------------------
+  \begin{scope}[shift={(-9.2,-11.3)}, font=\footnotesize]
+    \draw[grove] (0,0) -- (1,0);  \node[anchor=west] at (1.1,0) {câble Grove (port du shield)};
+    \draw[jumper] (5.6,0) -- (6.6,0); \node[anchor=west] at (6.7,0) {câble jumper};
+    \draw[grove, draw=blue!60!black] (9.4,0) -- (10.4,0); \node[anchor=west] at (10.5,0) {bus I2C logiciel (Arduino maître)};
+    \draw[jumper, draw=violet!70!black] (16.3,0) -- (17.3,0); \node[anchor=west] at (17.4,0) {bus I2C matériel (Arduino esclave 0x42)};
+  \end{scope}
+\end{tikzpicture}%
+}
+\caption{Branchement de chaque broche de l'Arduino Uno. Les 19 broches utilisées sont reliées à leur module ; A3 reste libre. Les étiquettes donnent le signal du module et le port Grove utilisé.}
+\label{fig:brochage}
+\end{figure}
+\end{landscape}
+
+\subsection{Le piège du LCD et du DIP sur l'I2C}
+\label{sec:i2clog}
+
+Le LCD Grove 16x2 (contrôleur JHD1802, adresse 0x3E) et l'interrupteur DIP 6 positions (microcontrôleur intégré, adresse 0x03) sont des périphériques \textbf{I2C}. Or le seul contrôleur I2C du Uno doit être \textbf{esclave} du Raspberry Pi. Le faire basculer maître/esclave sur le même bus reviendrait à du multi-maître, que le contrôleur I2C du RPi gère mal.
+
+\textbf{Solution retenue} : un \textbf{second bus I2C logiciel} (bit-banging, \env 50~kHz) sur D7/D8, où l'Arduino est maître et le LCD et le DIP les esclaves. Ils se branchent sur le port Grove D7 via un \textbf{hub I2C Grove} : un port vers l'Arduino, un pour le LCD, un pour le DIP. Au démarrage, l'Arduino \textbf{scanne le bus} et signale tout périphérique absent ou en conflit d'adresse.
+
+\begin{itemize}
+  \item Le driver bit-bang laisse les interruptions \textbf{actives} : une préemption ralentit seulement l'horloge I2C, ce que le protocole tolère. Pas de section critique longue, donc pas d'impact sur la contrainte de 50~ms.
+  \item Le DIP embarque un microcontrôleur qui peut \textbf{étirer l'horloge} : le driver relâche SCL puis attend qu'elle remonte vraiment avant de continuer (facile à faire en bit-bang).
+  \item La bibliothèque Grove du DIP (\code{Grove_Multi_Switch}) s'appuie sur \code{Wire}, donc sur le bus matériel. Il faut réécrire sa lecture sur notre bus logiciel (quelques lignes, protocole à relever dans la bibliothèque).
+  \item \textbf{Un seul propriétaire du bus} : la tâche \code{tHmi} fait à la fois les écritures LCD et la lecture du DIP. Les écritures LCD sont découpées (seuls les caractères modifiés) pour que la lecture du DIP (échéance souple de \env 100~ms, \S\ref{sec:detonateur}) n'attende jamais plus de quelques ms. Pas de mutex, donc \textbf{pas d'inversion de priorité possible} sur ce bus. L'alternative (mutex avec héritage de priorité partagé entre \code{tHmi} et \code{tSense}) est à citer dans l'article comme choix écarté.
+\end{itemize}
+
+L'afficheur 4 chiffres (TM1637) et la LED Bar (MY9221) ne sont \textbf{pas} de l'I2C : chacun a son protocole série à 2 fils, pilotés en bit-bang sur leurs broches dédiées. Ils sont simples et rapides (\env 1~ms pour une mise à jour complète).
+
+Plan B : le LCD sur le bus du RPi, piloté par la passerelle. On perd l'autonomie de l'affichage, ce qui est contraire au sujet.
+
+\subsection{\texorpdfstring{Le bus I2C Arduino $\leftrightarrow$ RPi}{Le bus I2C Arduino - RPi}}
+\label{sec:i2crpi}
+
+\begin{itemize}
+  \item \textbf{Câblage} : A4 (SDA) $\leftrightarrow$ GPIO2 (broche 3 du RPi), A5 (SCL) $\leftrightarrow$ GPIO3 (broche 5), masse commune (broche 6), avec des jumpers.
+  \item \textbf{Niveaux} : le RPi est en 3,3~V, le Uno en 5~V. La bibliothèque Wire active les pull-ups internes vers 5~V : \textbf{danger pour le RPi}. Utiliser un \textbf{adaptateur de niveau bidirectionnel} (type BSS138, quelques euros). À défaut, désactiver les pull-ups internes après \code{Wire.begin()} et laisser ceux du RPi (1,8~k$\Omega$ vers 3,3~V). Ça marche en pratique mais c'est \textbf{hors spécification} ($V_{IH}$ min du 328P = 3,5~V à 5~V), à signaler dans l'article.
+  \item \begin{sloppypar}\textbf{Étirement d'horloge} : le contrôleur I2C du RPi gère mal le \emph{clock stretching}, que l'esclave AVR pratique pendant \code{onRequest}. Parades : bus à 50~kHz (\code{dtparam=i2c_arm_baudrate=50000}), réponse \code{onRequest} \textbf{pré-calculée} (simple copie d'un buffer), CRC sur les trames pour détecter les octets corrompus.\end{sloppypar}
+\end{itemize}
+
+\subsection{Boîtier}
+\label{sec:boitier}
+
+Boîtier imprimé en 3D (valise ou bâtons de dynamite).
+
+\begin{itemize}
+  \item \textbf{Face avant} : l'afficheur 4 chiffres en grand, la LED Bar juste dessous, le \textbf{clavier 12 touches} à côté.
+  \item \textbf{Face supérieure} : LCD, les 3 LED au-dessus des 3 boutons Grove, l'œil ultrason, la cellule photosensible juste à côté (piège), le DIP sous un petit volet \og DÉTONATEUR\fg{}.
+  \item \textbf{Côté} : le cadran (potentiomètre) avec graduations imprimées.
+  \item \textbf{Intérieur} : Arduino, et si possible le \textbf{RPi et une batterie USB}. La bombe devient autonome en Wi-Fi, plus spectaculaire en démo, avec un câble I2C court.
+\end{itemize}
+
+% =====================================================================
+\section{Architecture logicielle Arduino (FreeRTOS)}
+\label{sec:logiciel}
+
+Bibliothèque \code{Arduino_FreeRTOS} (feilipu). Son tick par défaut vient du \textbf{watchdog (\env 15~ms)}, ce qui laisse les Timer1 et Timer2 libres.
+
+\subsection{Répartition des timers}
+\label{sec:timers}
+
+\begin{center}\small
+\begin{tabularx}{\linewidth}{P{1.4cm}LL}
+\toprule
+\textbf{Timer} & \textbf{Usage} & \textbf{Justification} \\
+\midrule
+Timer0 & \code{millis()} / \code{micros()} (Arduino) & Inchangé \\
+Timer1 & CTC, période 20~ms $\to$ \textbf{déclenche le ping ultrason} ; prescaler 8 $\to$ \textbf{0,5~µs} de résolution pour horodater l'écho & Échantillonnage du capteur critique indépendant du tick FreeRTOS \\
+Timer2 & \code{tone()} du buzzer (notes, sirène, mélodie) & Libre depuis l'abandon de l'IR. Son interruption (une par demi-période du son) ajoute un peu de gigue : à mesurer (\S\ref{sec:mesure}) \\
+WDT & Tick FreeRTOS & Valeur par défaut de la bibliothèque \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+\subsection{Interruptions}
+\label{sec:isr}
+
+\begin{center}\small
+\begin{tabularx}{\linewidth}{P{3cm}P{2.6cm}L}
+\toprule
+\textbf{ISR} & \textbf{Source} & \textbf{Travail (minimal)} \\
+\midrule
+\code{TIMER1_COMPA} & toutes les 20~ms & si la ligne écho est revenue à 0 : impulsion de 10~µs, passage en entrée, arme INT0 \\
+\code{INT0} & front de l'écho & horodate (TCNT1) ; sur le front descendant : calcule la distance, si $<$ D deux fois de suite $\to$ \code{vTaskNotifyGiveFromISR(tSafety)} + \code{portYIELD_FROM_ISR()} \\
+\code{PCINT2} & boutons Grove & lit \code{PIND}, anti-rebond 30~ms par horodatage, envoie l'événement dans \code{qEvents} \\
+\code{TIMER2_COMPA} & \code{tone()} & bascule la broche du buzzer \\
+\code{TWI} (Wire) & RPi & \code{onReceive} : copie dans un buffer + notifie \code{tComm}. \code{onRequest} : renvoie un buffer \textbf{déjà prêt} \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+Le clavier analogique n'a pas d'interruption : il est échantillonné par \code{tSense} comme les autres entrées analogiques.
+
+\subsection{Tâches}
+\label{sec:taches}
+
+\begin{center}\small
+\begin{tabularx}{\linewidth}{P{1.5cm}P{1.2cm}P{3.2cm}L}
+\toprule
+\textbf{Tâche} & \textbf{Prio} & \textbf{Déclenchement} & \textbf{Rôle} \\
+\midrule
+\code{tSafety} & \textbf{3} (max) & notification de l'ISR ultrason & Allume tout de suite la LED rouge (écriture directe sur le port) et lance le son de faute, horodate la latence, pousse \code{FAULT} dans \code{qEvents} \\
+\code{tGame} & 2 & \code{qEvents} + timeout 100~ms & Machine à états de la partie, logique des modules, chrono (avec facteur de vitesse), fautes, explosion \\
+\code{tSense} & 2 & périodique 20~ms & ADC cadran, lumière et clavier : filtrage, hystérésis, calibration, occultations, décodage des touches $\to$ \code{qEvents} \\
+\code{tComm} & 1 & notification de l'ISR TWI & Décode les commandes, vérifie le CRC de la configuration, construit l'instantané d'état pour le RPi \\
+\code{tHmi} & 1 & périodique 50~ms & Propriétaire du bus I2C logiciel : LCD (lent, préemptible) et \textbf{lecture du DIP} (changements $\to$ \code{qEvents}). Afficheur 4 chiffres (chrono, 20~Hz pour les centièmes), LED Bar, motifs des LED et du buzzer \\
+\emph{idle} & 0 & --- & Hook : compteur de charge CPU, puis mise en veille (\code{SLEEP_MODE_IDLE}) \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+\textbf{Pourquoi ces priorités} : seule la chaîne de sécurité a une échéance dure, elle est donc au-dessus de tout. Le jeu et l'acquisition passent avant l'IHM : un LCD qui se rafraîchit 30~ms en retard ne se voit pas, alors qu'une touche perdue, si. \code{tComm} est bas parce que le RPi interroge (il réessaie) et que les réponses I2C sont déjà prêtes en ISR.
+
+\subsection{Communication entre tâches}
+\label{sec:ipc}
+
+\begin{itemize}
+  \item \textbf{Notification de tâche} (ISR $\to$ \code{tSafety}) : la primitive FreeRTOS la plus rapide, sans objet noyau.
+  \item \textbf{File \code{qEvents}} (ISR et tâches $\to$ \code{tGame}) : boutons, touches du clavier, occultations, DIP, fautes, commandes. Un \textbf{seul écrivain} pour l'état du jeu (\code{tGame}), donc pas de course sur le compteur de fautes.
+  \item \textbf{Mutex \code{mState}} (avec héritage de priorité) : protège la lecture de l'état par \code{tHmi} et \code{tComm}.
+  \item \textbf{Instantané I2C en double tampon} : \code{tComm} écrit le tampon inactif, puis échange l'index dans un \code{ATOMIC_BLOCK} (cf. note de bas de page du sujet sur \code{util/atomic.h}). L'ISR TWI lit toujours un tampon cohérent, sans verrou.
+  \item \textbf{FIFO d'événements vers le RPi} : tampon circulaire de 16 événements avec numéro de séquence. Le RPi détecte les pertes.
+  \item \textbf{Priorité d'actionneur} : \code{tSafety} écrit directement LED rouge et buzzer et pose un \code{alarmUntil}. \code{tHmi} ne touche pas à ces sorties avant cette échéance.
+\end{itemize}
+
+\subsection{Budget mémoire (2~Ko de RAM, c'est la vraie contrainte du Uno)}
+\label{sec:ram}
+
+\begin{center}\small
+\begin{tabularx}{0.8\linewidth}{Lr}
+\toprule
+\textbf{Poste} & \textbf{Octets (estimation)} \\
+\midrule
+5 tâches (TCB $\approx$ 40~o + pile 128--192~o) & \env 1000 \\
+Wire (5 tampons de 32~o + état) & \env 170 \\
+Configuration de partie & \env 48 \\
+FIFO d'événements (16 × 6~o) & 96 \\
+Instantanés I2C (2 × 16~o) & 32 \\
+Tampon LCD (32 car.) + glyphes & 40 \\
+Afficheur 4 chiffres, LED Bar, DIP, clavier (saisie en cours) & \env 30 \\
+Variables globales, Arduino core (sans \code{Serial} : $-$\env 150~o de tampons) & \env 120 \\
+\midrule
+\textbf{Total} & \textbf{\env 1540 / 2048} \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+\begin{itemize}
+  \item \textbf{Allocation statique} (\code{configSUPPORT_STATIC_ALLOCATION}, \code{xTaskCreateStatic}) : l'occupation est connue à la compilation, pas de fragmentation.
+  \item Mesure des piles avec \code{uxTaskGetStackHighWaterMark} (remontées dans le registre DIAG).
+  \item Si ça déborde : fusionner \code{tSense} dans \code{tGame}, ou remplacer Wire par un driver TWI esclave maison (registres directement, tampons de 16~o).
+\end{itemize}
+
+% =====================================================================
+\section{Machine à états}
+\label{sec:etats}
+
+\begin{center}
+\begin{tikzpicture}[
+    font=\small,
+    st/.style={draw, rounded corners=3pt, fill=teal!8, minimum height=0.7cm, minimum width=1.9cm, font=\small\ttfamily},
+    tr/.style={-{Stealth[length=2.2mm]}, line width=0.8pt},
+    lab/.style={font=\scriptsize, align=center},
+  ]
+  \node[st] (idle)    at (0,0)    {IDLE};
+  \node[st] (armed)   at (4,0)    {ARMED};
+  \node[st] (running) at (8.2,0)  {RUNNING};
+  \node[st] (finale)  at (12.6,0) {FINALE};
+  \node[st, fill=red!10]   (exploded) at (8.6,-2.6)  {EXPLODED};
+  \node[st, fill=green!10] (defused)  at (12.6,-2.6) {DEFUSED};
+
+  \draw[tr] (idle) -- node[lab, above] {CONFIG\\(CRC ok)} (armed);
+  \draw[tr] (armed) -- node[lab, above] {DIP tout OFF\\+ 3 boutons 1~s} (running);
+  \draw[tr] (running) -- node[lab, above] {tous les\\modules OK} (finale);
+  \draw[tr] ($(running.south)+(0.4,0)$) -- node[lab, right] {fautes $>$ max\\ou $t = 0$} (exploded.north);
+  \draw[tr] (finale) -- node[lab, right] {bon relâché} (defused);
+  \draw[tr] ($(running.south)+(-0.4,0)$) -- ++(0,-1) -| (idle.south);
+  \draw[line width=0.8pt] (armed.south) -- ++(0,-1);
+  \node[lab, above] at ($(idle.south)!0.5!(armed.south)+(0,-1)$) {ABORT / RESET};
+\end{tikzpicture}
+\end{center}
+
+Dans \code{RUNNING}, sous-état \code{module_courant} (ordre donné par la configuration). Le Périmètre est actif de \code{RUNNING} à \code{FINALE} inclus.
+
+% =====================================================================
+\section{La contrainte temps réel dure : faute détectée et signalée en moins de 50~ms}
+\label{sec:rt}
+
+\subsection{Chaîne}
+\label{sec:chaine}
+
+\begin{center}
+\begin{tikzpicture}[
+    font=\small,
+    box/.style={draw, rounded corners=2pt, fill=white, align=center, text width=2.75cm, minimum height=1.05cm, inner sep=3pt},
+    tr/.style={-{Stealth[length=2mm]}, line width=0.8pt},
+    node distance=0.55cm,
+  ]
+  \node[box, fill=red!8] (intr) {intrusion};
+  \node[box, right=of intr] (ping) {ping Timer1\\($\leq$ 20~ms)};
+  \node[box, right=of ping] (echo) {écho\\($\leq$ 1,2~ms pour 20~cm)};
+  \node[box, right=of echo] (isr) {ISR INT0};
+  \node[box, below=0.9cm of intr] (ech2) {2\textsuperscript{e} échantillon\\(+20~ms)};
+  \node[box, right=of ech2] (notif) {notification\\+ yield};
+  \node[box, right=of notif] (safe) {\texttt{tSafety}\\(prio max)};
+  \node[box, right=of safe, fill=red!8] (led) {\texttt{PORTB |=}\\\texttt{LED\_ROUGE}\\son de faute};
+
+  \draw[tr] (intr) -- (ping);
+  \draw[tr] (ping) -- (echo);
+  \draw[tr] (echo) -- (isr);
+  \draw[tr] (isr.south) -- ++(0,-0.45) -| (ech2.north);
+  \draw[tr] (ech2) -- (notif);
+  \draw[tr] (notif) -- (safe);
+  \draw[tr] (safe) -- (led);
+\end{tikzpicture}
+\end{center}
+
+\subsection{Budget pire cas}
+\label{sec:budget}
+
+\begin{center}\small
+\begin{tabularx}{0.85\linewidth}{Lr}
+\toprule
+\textbf{Étape} & \textbf{Pire cas} \\
+\midrule
+Attente du prochain ping & 20~ms \\
+Temps de vol pour D = 20~cm & 1,2~ms \\
+Confirmation sur un 2\textsuperscript{e} échantillon & 20~ms + 1,2~ms \\
+ISR + \code{portYIELD_FROM_ISR} + changement de contexte & \env 50~µs (à mesurer) \\
+Plus longue section masquée (ISR TWI, ISR \code{tone()}, sections critiques FreeRTOS) & \env 100~µs (à mesurer) \\
+Écriture GPIO dans \code{tSafety} & $<$ 5~µs \\
+\midrule
+\textbf{Total} & \textbf{$\approx$ 42,6~ms $<$ 50~ms} \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+Le chemin critique \textbf{ne dépend pas du tick} FreeRTOS : la notification depuis l'ISR préempte immédiatement. Le tick imprécis du watchdog ne pèse donc pas sur l'échéance. C'est un argument à mettre en avant à l'oral.
+
+\textbf{Hypothèse environnementale à écrire dans l'article} : le Grove Ultrasonic n'a qu'une broche (déclenchement et écho). On ne peut pas relancer un ping tant que l'écho précédent n'est pas retombé. Avec un plafond à 2,5~m, l'écho le plus long dure \env 15~ms, ce qui reste compatible avec une période de 20~ms. Dans un grand hall, la période s'allonge et l'échéance peut sauter. La documentation conseille $\geq$ 60~ms entre deux mesures : nous descendons à 20~ms en connaissance de cause et \textbf{mesurons le taux de faux positifs}. Bonne matière pour l'analyse critique.
+
+\textbf{Plan B} si l'ultrason ne tient pas l'échéance :
+
+\begin{itemize}
+  \item confirmation sur \textbf{un seul} échantillon (budget $\approx$ 21~ms), au prix de plus de faux positifs ;
+  \item ou contrainte dure portée par la \textbf{cellule photosensible} (\og ne jamais masquer la cellule hors du module Occultation\fg{}), échantillonnée à 1~kHz par le Timer1 : détection en quelques ms. L'ultrason devient alors une contrainte souple.
+\end{itemize}
+
+\subsection{Mesure (pour l'article)}
+\label{sec:mesure}
+
+\begin{enumerate}
+  \item \textbf{Instrumentation interne} : \code{TCNT1} lu au front d'écho qui valide la faute, puis au moment où \code{tSafety} écrit la LED. Min, moyenne, max et compteur de dépassements dans le registre DIAG, lu par le RPi et envoyé au cloud.
+  \item \textbf{Mesure externe} avec un \textbf{analyseur logique} USB (clone Saleae 8 voies à \env 10~€, fortement recommandé) : voie 1 sur D2 (écho), voie 2 sur D9 (LED rouge). Histogramme sur quelques milliers de fautes provoquées.
+  \item \textbf{Scénarios de charge} : (a) repos ; (b) LCD qui rafraîchit en continu ; (c) RPi qui interroge à 100~Hz ; (d) buzzer qui joue des notes (ISR du Timer2) + frappe rapide au clavier et aux boutons ; (e) tout à la fois + sabotages.
+  \item \textbf{Comparaison avec une version \emph{superloop} naïve} (\code{loop()} avec \code{pulseIn()} bloquant + LCD + Wire) : montrer qu'elle \textbf{rate l'échéance} sous charge. C'est la justification chiffrée de l'usage du RTOS demandée pour l'oral.
+\end{enumerate}
+
+% =====================================================================
+\section{Protocole I2C (Arduino esclave, adresse 0x42)}
+\label{sec:protocole}
+
+Le RPi écrit le numéro de registre puis lit N octets (start répété, \code{I2C_RDWR}). La bibliothèque Wire limite une trame à \textbf{32 octets}, d'où la configuration envoyée en pages.
+
+\begin{center}\small
+\begin{tabularx}{\linewidth}{P{1.6cm}P{2.4cm}P{1.1cm}P{1.3cm}L}
+\toprule
+\textbf{Reg} & \textbf{Nom} & \textbf{Accès} & \textbf{Taille} & \textbf{Contenu} \\
+\midrule
+\code{0x00} & STATUS & R & 10 & état, temps restant (uint16, 1/10~s), fautes, fautes max, masque des modules résolus, module courant, facteur de vitesse (\%), position du DIP (6 bits), CRC-8 \\
+\code{0x08} & EVT\_COUNT & R & 1 & événements en attente \\
+\code{0x09} & EVT\_POP & R & 7 & séquence, type, module, données (2), $t$ depuis le départ (2), puis l'événement est retiré \\
+\code{0x10} & DIAG & R & 12 & latence RT max et moyenne (µs), dépassements, charge CPU \%, pile min, erreurs I2C (deux bus), lectures clavier rejetées, uptime \\
+\code{0x20} & CMD & W & 1--4 & \code{01} ARM, \code{02} START (démarrage à distance), \code{03} ABORT, \code{04} RESET, \code{10} SABOTAGE\_ACCEL(facteur, durée), \code{11} SABOTAGE\_BROUILLAGE(durée), \code{12} FAUSSE\_ALARME, \code{20} PING(nonce) \\
+\code{0x40}--\code{0x41} & CONFIG p0--p1 & W & $\leq$ 30 chacune & blob de configuration, CRC-8 en dernière position ; ARM refusé si CRC faux \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+\textbf{Contenu de la configuration} (\env 48~o) : durée, fautes max, ordre des modules, seuil D, nombre d'échantillons de confirmation, accélération par faute, \no{} de série (6 car.), mot de Fréquence (8 car.) et cran attendu, N éclairs et nombre d'occultations attendu, numéro de lot et code attendu du Clavier (4 chiffres), réponses des 3 étapes du Relais (stimulus + bouton), canal affiché et code attendu du Détonateur (6 bits), bouton et chiffre de la finale.
+
+\begin{sloppypar}
+\textbf{Types d'événements} : \code{FAULT(module, cause)}, \code{MODULE_SOLVED}, \code{STATE_CHANGE}, \code{SABOTAGE_APPLIED}, \code{PONG(nonce)}.
+\end{sloppypar}
+
+% =====================================================================
+\section{Passerelle Raspberry Pi (fog / edge)}
+\label{sec:passerelle}
+
+\subsection{Rôle}
+
+\begin{itemize}
+  \item \textbf{Maître I2C} en interrogation uniquement (conforme au sujet) : STATUS à 20~Hz, vidage de la FIFO quand \code{EVT_COUNT > 0}, DIAG toutes les 5~s.
+  \item \textbf{Traduction} des registres en JSON/MQTT, et des commandes MQTT en écritures de registres (pagination et CRC de la configuration).
+  \item \textbf{Filtrage} : l'état n'est publié \textbf{qu'en cas de changement} ou à 1~Hz (au lieu de 20~Hz), les événements tout de suite, les données de diagnostic agrégées. On mesure le gain de bande passante.
+  \item \textbf{Horodatage} : l'Arduino donne un temps relatif au départ ; le RPi (synchronisé NTP) le convertit en temps absolu.
+  \item \textbf{Chien de garde} : si STATUS ne répond plus ou si l'uptime ne bouge plus pendant 1~s, publication de \code{BOMB_OFFLINE}.
+  \item \textbf{Stockage et renvoi} : si le cloud est injoignable, événements et résultats vont dans une file locale (SQLite ou fichier en ajout seul) et repartent à la reconnexion. La bombe, elle, continue de jouer.
+  \item \textbf{Effet d'explosion} (option) : le RPi joue un son d'explosion sur un haut-parleur (prise jack), puisqu'il reçoit l'événement \code{EXPLODED}.
+\end{itemize}
+
+\subsection{Topics MQTT}
+
+\begin{center}\small
+\begin{tabularx}{\linewidth}{P{7cm}P{0.9cm}P{1.7cm}L}
+\toprule
+\textbf{Topic} & \textbf{Sens} & \textbf{QoS} & \textbf{Contenu} \\
+\midrule
+\code{bomb/{id}/state} & $\uparrow$ & 0, \emph{retained} & état, temps restant, fautes, modules \\
+\code{bomb/{id}/event} & $\uparrow$ & 1 & événements numérotés \\
+\code{bomb/{id}/diag} & $\uparrow$ & 0 & latence RT, CPU, piles, erreurs I2C \\
+\code{bomb/{id}/cmd/config} & $\downarrow$ & 1 & blob de configuration \\
+\code{bomb/{id}/cmd/{arm,start,abort,reset}} & $\downarrow$ & 1 & \\
+\code{bomb/{id}/cmd/sabotage} & $\downarrow$ & 1 & type, durée, horodatage d'envoi \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+\subsection{Optimisation (exigence de la phase 3)}
+\label{sec:optim}
+
+Comparer des déploiements, mesures à l'appui :
+
+\begin{center}\small
+\begin{tabularx}{\linewidth}{P{2.4cm}L}
+\toprule
+\textbf{Variante} & \textbf{Description} \\
+\midrule
+A. Référence & Raspberry Pi OS complet + script Python lancé à la main \\
+B. Allégée & Raspberry Pi OS \textbf{Lite}, services inutiles désactivés (bluetooth, avahi, cups…), démon Python sous \textbf{systemd} \\
+C. Optimisée & Démon \textbf{binaire statique} (Go, Rust ou C) sous systemd avec durcissement (\code{MemoryMax}, \code{CPUQuota}, \code{ProtectSystem}), ou dans un conteneur \code{FROM scratch} de quelques Mo \\
+D. Bonus & Image \textbf{Buildroot} minimale qui démarre directement sur le démon \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+Métriques : temps de démarrage jusqu'à \og prêt\fg{}, RAM (RSS), CPU, taille de l'image, gigue de la période d'interrogation, écritures sur la carte SD.
+
+% =====================================================================
+\section{Cloud}
+\label{sec:cloud}
+
+Peut être réel (petit VPS) ou simulé sur un portable (\code{docker compose}), comme le sujet l'autorise.
+
+\begin{itemize}
+  \item \textbf{Broker} Mosquitto.
+  \item \textbf{API} (FastAPI ou Node) + \textbf{SQLite}.
+  \item \textbf{Pages web} :
+  \begin{itemize}
+    \item \code{/lobby} : création d'équipe, choix du niveau ou réglage fin des paramètres ;
+    \item \code{/manuel/{partie}} : le manuel pour l'expert, pensé pour le mobile, \textbf{sans la solution} ;
+    \item \code{/saboteur/{partie}} : 3 boutons de sabotage, budget de 3 actions et 30~s de recharge ;
+    \item \code{/live} : vue spectateurs (chrono, fautes, modules) pour la soutenance ;
+    \item \code{/classement}.
+  \end{itemize}
+  \item \textbf{Génération} : graine 32 bits $\to$ PRNG déterministe (mulberry32 ou xorshift) $\to$ \no{} de série, mots, numéro de lot, tables, ordre des modules, stimuli, solution. Le manuel est rendu en HTML ; la configuration est sérialisée au format binaire de la bombe.
+  \item \textbf{Test automatique du générateur} : un \textbf{solveur} lit le manuel généré et la configuration, et vérifie que les règles donnent bien la solution envoyée à la bombe, sur 10\,000 graines. Ça évite des parties impossibles le jour de la démo.
+  \item \textbf{Score} : temps restant × multiplicateur de niveau $-$ 15~s × fautes, avec bonus si un saboteur était actif.
+  \item \textbf{Mesure de bout en bout} : la commande \code{PING(nonce)} fait l'aller-retour cloud $\to$ RPi $\to$ Arduino $\to$ RPi $\to$ cloud. Latence d'un sabotage jusqu'à son effet sur la bombe, et d'une faute jusqu'à son affichage sur \code{/live}.
+\end{itemize}
+
+% =====================================================================
+\section{Expériences à mettre dans l'article}
+\label{sec:experiences}
+
+\begin{center}\small
+\begin{tabularx}{\linewidth}{P{0.8cm}P{4.6cm}L}
+\toprule
+\textbf{\#} & \textbf{Question} & \textbf{Mesure} \\
+\midrule
+E1 & L'échéance de 50~ms est-elle tenue sous charge ? & Histogramme de latence par scénario (\S\ref{sec:mesure}), RTOS contre \emph{superloop} \\
+E2 & Quel coût pour le RTOS sur un Uno ? & Charge CPU (idle hook), piles, RAM totale, taille du binaire \\
+E3 & Quel compromis pour l'interrogation I2C ? & Fréquence d'interrogation contre latence des événements contre CPU (deux côtés) ; erreurs I2C avec et sans adaptateur de niveau, à 50 et 100~kHz \\
+E4 & La passerelle est-elle légère ? & Variantes A--D (\S\ref{sec:optim}) \\
+E5 & Quelle latence de bout en bout ? & Événement $\to$ \code{/live}, sabotage $\to$ effet sur la bombe \\
+E6 & Le système est-il robuste ? & Couper le Wi-Fi pendant la partie (la bombe continue, les événements repartent sans perte) ; débrancher le RPi (l'Arduino reste autonome) \\
+E7 & Les capteurs sont-ils fiables ? & Faux positifs du Périmètre selon la période et le seuil ; touches perdues ou doublées au clavier en frappe rapide ; temps entre l'appui et l'événement \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+% =====================================================================
+\section{Risques et plans B}
+\label{sec:risques}
+
+\begin{center}\small
+\begin{tabularx}{\linewidth}{P{5cm}P{2.2cm}L}
+\toprule
+\textbf{Risque} & \textbf{Probabilité} & \textbf{Plan B} \\
+\midrule
+Échos parasites de l'ultrason, échéance non tenue & moyenne & Confirmation sur un seul échantillon, ou contrainte dure déplacée sur la cellule photosensible (\S\ref{sec:budget}) \\
+Tensions du clavier trop proches ou bruitées (courant de la LED Bar et du buzzer sur le 5~V) & faible & Table relevée sur notre exemplaire, médiane sur 3 lectures, mesure E7 \\
+RAM du Uno saturée & moyenne & Fusion de tâches, driver TWI maison, glyphes en PROGMEM \\
+Octets corrompus sur l'I2C (étirement d'horloge du RPi) & élevée sans précaution & 50~kHz, réponses pré-calculées, CRC + nouvelle tentative côté RPi \\
+5~V sur l'I2C du RPi & --- & Adaptateur de niveau (à demander ou acheter) \\
+Plus de broches & certaine & Brochage du \S\ref{sec:brochage} : 19 broches sur 20, A3 en réserve. Toute nouvelle idée passe par ce tableau \\
+Plus de port série pour déboguer & certaine & Drapeau \code{DEBUG_SERIAL} (LED Bar débranchée en développement), mesures par le registre DIAG ; sinon renoncer à la LED Bar \\
+Protocole I2C du DIP mal documenté, ou étirement d'horloge & moyenne & Relever le protocole dans \code{Grove_Multi_Switch} dès la S2 ; driver bit-bang qui attend SCL \\
+Consommation trop forte (LED Bar + afficheur + LCD) & faible & LED Bar à mi-intensité, alimentation USB 500~mA \\
+Cas d'usage refusé en semaine 2 & faible & Préparer une fiche d'une page (concept + liste des capteurs et actionneurs + contrainte de 50~ms) \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+% =====================================================================
+\section{Planning (calé sur les phases du sujet)}
+\label{sec:planning}
+
+\begin{center}\small
+\begin{tabularx}{\linewidth}{P{1.6cm}P{2.6cm}L}
+\toprule
+\textbf{Semaine} & \textbf{Phase} & \textbf{Livrables} \\
+\midrule
+S1 & 1 : bare-metal & Boutons PCINT2 + anti-rebond, Timer1 CTC, LED, buzzer avec \code{tone()}. Premier test du keypad analogique : \textbf{relevé des tensions des 12 touches} \\
+S2 & 2 : drivers & \textbf{Validation du cas d'usage par l'équipe enseignante.} Drivers ultrason (INT0 + Timer1), ADC filtré (cadran, lumière, clavier), I2C logiciel pour le LCD et le DIP, afficheur 4 chiffres (TM1637), LED Bar (MY9221) \\
+S3 & 2 : FreeRTOS & Migration vers les tâches, chaîne de sécurité, \textbf{première mesure de latence}, budget mémoire \\
+S4 & 2 : I2C & Esclave + registres sur l'Arduino, maître sur le RPi, adaptateur de niveau, CRC \\
+S5 & 3 : passerelle & Démon de passerelle, MQTT, filtrage, stockage et renvoi ; cloud : générateur et manuel \\
+S6 & 3 : passerelle & Variantes d'optimisation A--D et mesures ; cloud : saboteur, classement, \code{/live} \\
+S7 & 4 : finalisation & Boîtier imprimé, intégration, campagnes de mesure E1--E7, article \\
+S8 & Soutenance & Démo en direct (l'expert sur son téléphone, un saboteur dans le public) \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+Rendu de l'article : \textbf{avant le 17 janvier 2027 à 22h00}, 10 pages maximum.
+
+\textbf{Répartition suggérée} (à adapter à la taille de l'équipe) :
+
+\begin{enumerate}
+  \item Drivers bare-metal, clavier et boîtier ;
+  \item FreeRTOS, chaîne temps réel, campagnes de mesure ;
+  \item I2C et passerelle RPi (optimisation) ;
+  \item Cloud : générateur de manuel, pages web, classement.
+\end{enumerate}
+
+\end{document}

@@ -10,7 +10,8 @@ Cooperative game built around a fake bomb to defuse. Project for the course
 
 | File | Content |
 |---|---|
-| `CONCEPTION.md` | Detailed design: game rules, modules, pinout, FreeRTOS tasks, I2C protocol, gateway, experiments, schedule |
+| `CONCEPTION.tex` | Detailed design (LaTeX): game rules, modules, pinout with wiring diagram, FreeRTOS tasks, I2C protocol, gateway, experiments, schedule |
+| `CONCEPTION.pdf` | Compiled design document |
 | `components.txt` | Inventory of the available hardware |
 | `edge_rtos_project2026.pdf` | Project brief |
 
@@ -31,7 +32,7 @@ Commit messages are written in **English** and follow
 |---|---|
 | `feat` | A new feature (new module, new game mechanic, new gateway endpoint) |
 | `fix` | A bug fix |
-| `docs` | Documentation only (`README.md`, `CONCEPTION.md`, the article) |
+| `docs` | Documentation only (`README.md`, `CONCEPTION.tex`, the article) |
 | `refactor` | Code change that neither fixes a bug nor adds a feature |
 | `perf` | Performance or timing improvement (e.g. reducing fault detection latency) |
 | `test` | Adding or updating tests and measurements |
@@ -64,7 +65,7 @@ BREAKING CHANGE: the RPi gateway must read 9 bytes instead of 8.
 ```
 feat(keypad): decode the analog keypad on A2
 fix(lcd): restore the software I2C bus after a NACK
-docs: update the pinout table in CONCEPTION.md
+docs: update the pinout table in CONCEPTION.tex
 perf(perimeter): move the ultrasonic ping to Timer1
 chore: add the DIP switch to components.txt
 ```
