@@ -14,8 +14,10 @@
 \usepackage{microtype}
 \usepackage{parskip}
 \usepackage{xcolor}
-\definecolor{c4}{RGB}{196,178,124}
-\definecolor{c4d}{RGB}{140,124,80}
+\definecolor{bombv}{RGB}{34,86,66}
+\definecolor{bombvd}{RGB}{20,56,42}
+\definecolor{bombg}{RGB}{150,153,156}
+\definecolor{bombgd}{RGB}{108,110,113}
 \usepackage{array,tabularx,booktabs}
 \usepackage{enumitem}
 \usepackage{pdflscape}
@@ -67,7 +69,7 @@ Le jeu utilise uniquement le matériel de \code{components.txt} :
 Télémètre à ultrasons & Écran LCD 16x2 (I2C) & Arduino Uno \\
 Potentiomètre rotatif & Afficheur 4 chiffres (TM1637) & Grove Base Shield v2 \\
 Capteur de lumière v1.2 & LED Bar 10 segments (MY9221) & Câbles Grove $\to$ jumpers (mâles et femelles) \\
-3 boutons Grove & LED rouge, verte, bleue & Raspberry Pi et son bloc secteur USB-C (fournis à part) \\
+3 boutons lumineux Grove (LED Button bleu, jaune, rouge) & LED intégrées aux 3 boutons & Raspberry Pi et son bloc secteur USB-C (fournis à part) \\
 Interrupteur DIP 6 positions (I2C) & Buzzer & \\
 Keypad 3×4 analogique (0--9, \code{*}, \texttt{\#}, hors Grove), une seule sortie analogique & & \\
 \bottomrule
@@ -83,13 +85,13 @@ L'\textbf{émetteur et le récepteur infrarouges} du kit ne sont \textbf{pas uti
 \toprule
 \textbf{Module} & \textbf{Matériel} & \textbf{Principe} \\
 \midrule
-\textbf{Périmètre} & télémètre à ultrasons, LED rouge, buzzer, LED Bar & zone interdite autour de \og l'œil\fg{} de la bombe ; porte la contrainte dure de 50~ms \\
-\textbf{Fréquence} & potentiomètre, bouton, LCD, buzzer, LED verte & régler le cadran sur la fréquence donnée par le manuel \\
-\textbf{Occultation} & capteur de lumière, LED bleue, buzzer, LCD & masquer la cellule le bon nombre de fois \\
-\textbf{Clavier} & keypad analogique, LCD, buzzer, LED verte et rouge & taper un code déduit d'une règle du manuel \\
-\textbf{Relais} & 3 boutons Grove, 3 LED, buzzer, LCD & module de mémoire en 3 étapes \\
-\textbf{Détonateur} & interrupteur DIP, bouton, LCD, buzzer, LED rouge, LED Bar & composer un code binaire, avec des interrupteurs piégés \\
-\textbf{Finale} & boutons, 3 LED, afficheur 4 chiffres, LED Bar, buzzer & maintenir le bon bouton, relâcher au bon chiffre \\
+\textbf{Périmètre} & télémètre à ultrasons, bouton rouge (sa LED), buzzer, LED Bar & zone interdite autour de \og l'œil\fg{} de la bombe ; porte la contrainte dure de 50~ms \\
+\textbf{Fréquence} & potentiomètre, bouton jaune, LCD, buzzer & régler le cadran sur la fréquence donnée par le manuel \\
+\textbf{Occultation} & capteur de lumière, bouton bleu (sa LED), buzzer, LCD & masquer la cellule le bon nombre de fois \\
+\textbf{Clavier} & keypad analogique, LCD, buzzer, LED des boutons jaune et rouge & taper un code déduit d'une règle du manuel \\
+\textbf{Relais} & 3 boutons lumineux, buzzer, LCD & module de mémoire en 3 étapes \\
+\textbf{Détonateur} & interrupteur DIP, bouton jaune, LCD, buzzer, LED du bouton rouge, LED Bar & composer un code binaire, avec des interrupteurs piégés \\
+\textbf{Finale} & 3 boutons lumineux, afficheur 4 chiffres, LED Bar, buzzer & maintenir le bon bouton, relâcher au bon chiffre \\
 \textbf{Chrono} & afficheur 4 chiffres & \code{MM:SS}, puis \code{SS:cc} sous la minute, toujours visible \\
 \textbf{Jauge de stabilité} & LED Bar & se vide à chaque faute ; devient la mèche pendant la finale \\
 \bottomrule
@@ -103,7 +105,7 @@ L'\textbf{émetteur et le récepteur infrarouges} du kit ne sont \textbf{pas uti
 \paragraph{Rôles}
 
 \begin{itemize}
-  \item \textbf{Démineur} : a la bombe entre les mains. Il voit le LCD, l'afficheur, les LED, entend le buzzer. N'a pas le manuel.
+  \item \textbf{Démineur} : a la bombe entre les mains. Il voit le LCD, l'afficheur, les boutons lumineux, entend le buzzer. N'a pas le manuel.
   \item \textbf{Expert} : a le manuel sur son téléphone, une page web servie par le Raspberry Pi de la bombe (le téléphone se connecte au réseau Wi-Fi du RPi). Ne voit pas la bombe.
   \item \textbf{Hacker} : console web servie elle aussi par le RPi. Il envoie des \textbf{perturbations}, avec un budget limité, à la bombe et au manuel de l'expert (\S\ref{sec:hacker-jeu}). Il gagne si la bombe explose.
 \end{itemize}
@@ -183,7 +185,7 @@ L'Arduino ne connaît \textbf{pas les règles}, seulement les stimuli et les ré
   \item \textbf{Génération} : le RPi tire la graine, génère le manuel et la configuration, et vérifie avec le solveur que la partie est faisable (\S\ref{sec:passerelle}).
   \item \textbf{Chargement} : la configuration est écrite dans l'Arduino par I2C, page par page ; la LED Bar se remplit à mesure. Le manuel et la console du hacker restent verrouillés.
   \item \textbf{Armement} : le LCD affiche \code{ARMEE} et le \textbf{numéro de série} (ex. \code{KX4-7B2}), l'afficheur la durée (\code{05:00}). Tant qu'un interrupteur DIP est sur ON, le LCD affiche \code{DIP -> OFF} et la bombe refuse de démarrer.
-  \item \textbf{Départ} : le démineur appuie 1~s sur les 3 boutons à la fois. Le chrono part, le manuel s'ouvre sur le téléphone de l'expert, la console du hacker s'active.
+  \item \textbf{Départ} : le démineur appuie 1~s sur les 3 boutons à la fois (ils s'allument pendant l'appui). Le chrono part, le manuel s'ouvre sur le téléphone de l'expert, la console du hacker s'active.
   \item \textbf{Modules} : les modules s'enchaînent dans l'ordre indiqué par le manuel ; chacun suit la boucle de la figure~\ref{fig:boucle-module}. Pendant tout ce temps, le \textbf{Périmètre} surveille l'œil et le \textbf{hacker} peut perturber. Chaque faute vide une partie de la jauge et accélère le chrono.
   \item \textbf{Finale} : une fois tous les modules résolus, la finale (\S\ref{sec:finale}).
   \item \textbf{Fin et bilan} : \code{DESAMORCEE} si la finale réussit ; \code{BOOM} si le chrono atteint 0 ou si la jauge se vide. Le score s'affiche sur la bombe, le manuel et la console du hacker ; résultat et historique partent au cloud. \og Rejouer\fg{} relance une partie avec une nouvelle graine.
@@ -252,15 +254,15 @@ Le LCD est entièrement réservé aux consignes des modules : le chrono est sur 
 \begin{center}\footnotesize
 \begin{tabularx}{\linewidth}{P{2.1cm}LP{1.85cm}P{2.2cm}P{1.9cm}L}
 \toprule
-\textbf{Événement} & \textbf{Afficheur 4 chiffres} & \textbf{LED Bar} & \textbf{LCD} & \textbf{LED} & \textbf{Buzzer} \\
+\textbf{Événement} & \textbf{Afficheur 4 chiffres} & \textbf{LED Bar} & \textbf{LCD} & \textbf{Boutons} & \textbf{Buzzer} \\
 \midrule
 Tic du chrono & \code{03:27}, deux-points qui clignotent ; \code{SS:cc} sous la minute & --- & consigne du module & --- & tic bref chaque seconde, puis 2/s sous 30~s \\
-Faute & --- & perd des segments & \code{FAUTE !} 1~s & flash rouge 300~ms & \code{BZZT} grave 200~ms \\
-Module résolu & --- & --- & \code{OK} puis \code{MODULE 3/6} & flash vert & double bip aigu \\
+Faute & --- & perd des segments & \code{FAUTE !} 1~s & flash du rouge 300~ms & \code{BZZT} grave 200~ms \\
+Module résolu & --- & --- & \code{OK} puis \code{MODULE 3/6} & flash du jaune & double bip aigu \\
 Perturbation \og accélération\fg{} & défile plus vite & --- & rien (c'est le but) & --- & les tics s'accélèrent : les joueurs l'\textbf{entendent} \\
 Perturbation \og brouillage\fg{} & segments au hasard pendant 5~s : \textbf{le chrono disparaît} & --- & caractères au hasard & --- & grésillement \\
-Explosion & \code{8888} qui clignote & stroboscope & \code{*** BOOM ***} & stroboscope des 3 LED & sirène montante 2~s \\
-Victoire & temps restant figé & vert fixe & \code{DESAMORCEE} & vert fixe & mélodie \\
+Explosion & \code{8888} qui clignote & stroboscope & \code{*** BOOM ***} & stroboscope des 3 boutons & sirène montante 2~s \\
+Victoire & temps restant figé & vert fixe & \code{DESAMORCEE} & les 3 allumés & mélodie \\
 \bottomrule
 \end{tabularx}
 \end{center}
@@ -286,13 +288,13 @@ Pour chaque module : capteurs et actionneurs, ce que voit le démineur, extrait 
 \toprule
 \textbf{Module} & \textbf{Capteurs} & \textbf{Actionneurs} & \textbf{Niveaux} \\
 \midrule
-Périmètre & télémètre à ultrasons & LED rouge, buzzer, LED Bar & tous (permanent) \\
-Fréquence & potentiomètre, bouton 2 & LCD, buzzer, LED verte & Démineur, Expert \\
-Occultation & capteur de lumière & LED bleue, buzzer, LCD & Démineur, Expert \\
-Clavier & keypad & LCD, buzzer, LED verte et rouge & tous \\
-Relais & 3 boutons & 3 LED, buzzer, LCD & tous \\
-Détonateur & DIP, bouton 2 & LCD, buzzer, LED rouge, LED Bar & Expert \\
-Finale & 3 boutons & 3 LED, afficheur, LED Bar, buzzer, LCD & tous \\
+Périmètre & télémètre à ultrasons & LED du bouton rouge, buzzer, LED Bar & tous (permanent) \\
+Fréquence & potentiomètre, bouton jaune & LCD, buzzer, LED du bouton jaune & Démineur, Expert \\
+Occultation & capteur de lumière & LED du bouton bleu, buzzer, LCD & Démineur, Expert \\
+Clavier & keypad & LCD, buzzer, LED des boutons jaune et rouge & tous \\
+Relais & 3 boutons & leurs 3 LED, buzzer, LCD & tous \\
+Détonateur & DIP, bouton jaune & LCD, buzzer, LED du bouton rouge, LED Bar & Expert \\
+Finale & 3 boutons & leurs 3 LED, afficheur, LED Bar, buzzer, LCD & tous \\
 \bottomrule
 \end{tabularx}
 \end{center}
@@ -302,13 +304,13 @@ Finale & 3 boutons & 3 LED, afficheur, LED Bar, buzzer, LCD & tous \\
 \label{sec:perimetre}
 
 \begin{itemize}
-  \item \textbf{Capteurs et actionneurs} : télémètre à ultrasons (\og l'œil\fg{}, sur la console) ; LED rouge et buzzer pour signaler une intrusion ; LED Bar pour l'alerte de proximité en mode assisté.
+  \item \textbf{Capteurs et actionneurs} : télémètre à ultrasons (\og l'œil\fg{}, au centre du panneau) ; bouton rouge (sa LED) et buzzer pour signaler une intrusion ; LED Bar pour l'alerte de proximité en mode assisté.
   \item \textbf{Règle} : aucun objet ne doit entrer à moins de \textbf{D~cm} de l'œil, du départ jusqu'à la fin de la finale. Ce module n'a pas de validation : il ne se résout pas, il se respecte.
   \item \textbf{Extrait de manuel} : \emph{\og L'œil surveille une zone de 10~cm si le numéro de série se termine par un chiffre pair, 20~cm sinon. Toute intrusion est une faute.\fg{}}
-  \item \textbf{Piège volontaire} : la cellule photosensible (module Occultation) est placée à côté de l'œil. Pour la masquer, il faut arriver \textbf{par le côté}, et seul le manuel le dit.
+  \item \textbf{Piège volontaire} : la cellule photosensible (module Occultation) est placée juste au-dessus de l'œil. Pour la masquer, il faut arriver \textbf{par le côté}, et seul le manuel le dit.
   \item \textbf{Difficulté} : Recrue, D = 10~cm et alerte de la LED Bar à 2 × D ; Démineur, D = 15~cm sans alerte ; Expert, D = 20~cm et une règle du seuil à deux conditions.
-  \item \textbf{Hacker} : sur la bombe, \og œil nerveux\fg{} : D augmente de 5~cm pendant 10~s (la LED rouge luit faiblement, c'est l'indice) ; sur le manuel, la valeur du seuil est brouillée pendant 10~s.
-  \item \textbf{Exigence} : une intrusion est détectée et signalée (LED rouge + buzzer) en \textbf{moins de 50~ms}, quoi que fassent les autres tâches (LCD, I2C, hacker…). Budget et mesure au \S\ref{sec:rt}.
+  \item \textbf{Hacker} : sur la bombe, \og œil nerveux\fg{} : D augmente de 5~cm pendant 10~s (le bouton rouge luit faiblement, par la PWM du Timer0 : c'est l'indice) ; sur le manuel, la valeur du seuil est brouillée pendant 10~s.
+  \item \textbf{Exigence} : une intrusion est détectée et signalée (LED du bouton rouge + buzzer) en \textbf{moins de 50~ms}, quoi que fassent les autres tâches (LCD, I2C, hacker…). Budget et mesure au \S\ref{sec:rt}.
   \item \textbf{Traitement local} : mesure du temps de vol par interruption (pas de \code{pulseIn} bloquant), confirmation sur 2 échantillons consécutifs pour éviter les faux positifs, rejet des valeurs aberrantes ($<$ 2~cm).
 \end{itemize}
 
@@ -317,11 +319,11 @@ Finale & 3 boutons & 3 LED, afficheur, LED Bar, buzzer, LCD & tous \\
 \label{sec:frequence}
 
 \begin{itemize}
-  \item \textbf{Capteurs et actionneurs} : potentiomètre (le \og cadran\fg{}) et bouton 2 (sous la LED verte) pour valider ; LCD pour le mot et la fréquence ; buzzer qui joue une note dont la hauteur suit le cadran ; LED verte qui s'allume quand le cadran est immobile depuis 1~s (prêt à valider).
+  \item \textbf{Capteurs et actionneurs} : potentiomètre (le \og cadran\fg{}) et bouton jaune (au milieu) pour valider ; LCD pour le mot et la fréquence ; buzzer qui joue une note dont la hauteur suit le cadran ; le bouton jaune s'allume quand le cadran est immobile depuis 1~s (prêt à valider).
   \item \textbf{Le démineur voit} : un mot en ligne 2 (ex. \code{ORAGE}) et la fréquence courante, mise à jour en direct quand il tourne le cadran (\code{3.40 MHz}, de 3.00 à 4.00~MHz).
   \item \textbf{Extrait de manuel} :
   \begin{manuel}
-    Trouvez le mot affiché. Si le numéro de série contient une voyelle, lisez la colonne B, sinon la colonne A. Réglez le cadran puis appuyez sous la LED verte.
+    Trouvez le mot affiché. Si le numéro de série contient une voyelle, lisez la colonne B, sinon la colonne A. Réglez le cadran puis appuyez sur le bouton jaune dès qu'il s'allume.
 
     \upshape\small
     \begin{tabular}{lcc}
@@ -342,12 +344,12 @@ Finale & 3 boutons & 3 LED, afficheur, LED Bar, buzzer, LCD & tous \\
 \end{itemize}
 
 % ---------------------------------------------------------------------
-\subsection{Occultation (capteur de lumière + LED bleue + buzzer)}
+\subsection{Occultation (capteur de lumière + bouton bleu + buzzer)}
 \label{sec:occultation}
 
 \begin{itemize}
-  \item \textbf{Capteurs et actionneurs} : capteur de lumière (la \og cellule\fg{}) ; LED bleue qui émet les salves ; buzzer qui fait un clic à chaque occultation comptée ; LCD qui affiche la consigne (\code{OCCULTATION}).
-  \item \textbf{Le démineur voit} : la LED bleue clignote par salves de N éclairs, séparées par une pause.
+  \item \textbf{Capteurs et actionneurs} : capteur de lumière (la \og cellule\fg{}) ; bouton bleu, dont la LED émet les salves ; buzzer qui fait un clic à chaque occultation comptée ; LCD qui affiche la consigne (\code{OCCULTATION}).
+  \item \textbf{Le démineur voit} : le bouton bleu clignote par salves de N éclairs, séparées par une pause.
   \item \textbf{Extrait de manuel} : \emph{\og Comptez les éclairs d'une salve (N). Si N + le dernier chiffre du \no{} de série est pair, masquez la cellule 2 fois. Sinon, masquez-la N fois. Si vous avez déjà fait une faute, ajoutez 1.\fg{}} La saisie est validée seule après 3~s de lumière continue.
   \item \textbf{Difficulté} : Démineur, N de 2 à 4, salves lentes (éclairs de 300~ms) ; Expert, N de 4 à 7, salves rapides (éclairs de 120~ms) et une occultation doit durer au moins 500~ms.
   \item \textbf{Hacker} : sur la bombe, \og éclair parasite\fg{} : la prochaine salve contient un éclair de trop, plus faible que les autres (indice) ; sur le manuel, la règle de calcul est brouillée pendant 10~s.
@@ -365,7 +367,7 @@ Finale & 3 boutons & 3 LED, afficheur, LED Bar, buzzer, LCD & tous \\
 \label{sec:clavier}
 
 \begin{itemize}
-  \item \textbf{Capteurs et actionneurs} : keypad 3×4 \textbf{analogique} (Aihasd, 12 touches) ; LCD pour le numéro de lot et la saisie ; buzzer qui bipe à chaque touche ; LED verte (code accepté) et LED rouge (code refusé).
+  \item \textbf{Capteurs et actionneurs} : keypad 3×4 \textbf{analogique} (Aihasd, 12 touches) ; LCD pour le numéro de lot et la saisie ; buzzer qui bipe à chaque touche ; bouton jaune allumé 1~s (code accepté) ou bouton rouge (code refusé).
   \item \textbf{Matériel} : un pont de résistances intégré au keypad donne une tension différente pour chaque touche sur une sortie unique. 3 fils : VCC, GND, OUT. Coût en broches de l'Arduino : \textbf{une seule (A2)}.
   \item \textbf{Le démineur voit} : \code{LOT 5829} en ligne 1 du LCD ; ce qu'il tape s'affiche en ligne 2 (\code{CODE: 31__}).
   \item \textbf{Extrait de manuel} :
@@ -387,22 +389,22 @@ Finale & 3 boutons & 3 LED, afficheur, LED Bar, buzzer, LCD & tous \\
 \end{itemize}
 
 % ---------------------------------------------------------------------
-\subsection{Relais (3 boutons + 3 LED + buzzer) : module de mémoire}
+\subsection{Relais (3 boutons lumineux + buzzer) : module de mémoire}
 \label{sec:relais}
 
 \begin{itemize}
-  \item \textbf{Capteurs et actionneurs} : 3 boutons Grove, chacun sous une LED (rouge, verte, bleue) ; buzzer qui joue une note propre à chaque couleur ; LCD qui affiche l'étape (\code{ETAPE 2/3}).
-  \item \textbf{Le démineur voit} : à chaque étape, une LED s'allume avec sa note.
+  \item \textbf{Capteurs et actionneurs} : les 3 boutons lumineux, de gauche à droite \textbf{bleu, jaune, rouge} ; buzzer qui joue une note propre à chaque couleur ; LCD qui affiche l'étape (\code{ETAPE 2/3}).
+  \item \textbf{Le démineur voit} : à chaque étape, un bouton s'allume avec sa note.
   \item \textbf{Extrait de manuel} :
   \begin{manuel}
-    Étape 1 : rouge $\to$ bouton sous la LED bleue ; vert $\to$ bouton du milieu ; bleu $\to$ même couleur.\\
-    Étape 2 : rouge $\to$ le bouton pressé à l'étape 1 ; vert $\to$ bouton de gauche ; bleu $\to$ bouton sous la LED rouge.\\
+    Étape 1 : rouge $\to$ bouton de gauche ; jaune $\to$ bouton rouge ; bleu $\to$ le bouton allumé.\\
+    Étape 2 : rouge $\to$ le bouton pressé à l'étape 1 ; jaune $\to$ bouton de droite ; bleu $\to$ bouton jaune.\\
     Étape 3 : …
   \end{manuel}
-  Les règles renvoient aux étapes précédentes : l'expert doit suivre l'historique.
-  \item \textbf{Difficulté} : Recrue, 2 étapes, LED allumée en continu ; Démineur, 3 étapes ; Expert, 4 étapes, LED allumée 1~s seulement (il faut la retenir).
-  \item \textbf{Hacker} : sur la bombe, \og écho\fg{} : la LED de l'étape est précédée d'un flash bref d'une autre couleur, sans note (indice) ; sur le manuel, les lignes d'une étape sont mélangées pendant 10~s.
-  \item \textbf{Traitement local} : interruptions \emph{pin change} (PCINT2) et \textbf{anti-rebond} par horodatage dans l'ISR (exactement l'exercice de la phase 1).
+  Les règles renvoient aux étapes précédentes : l'expert doit suivre l'historique. Elles désignent un bouton tantôt par sa \textbf{couleur}, tantôt par sa \textbf{position} : seul le démineur voit que le bouton de gauche est le bleu, et la traduction se fait sous la pression du chrono.
+  \item \textbf{Difficulté} : Recrue, 2 étapes, bouton allumé en continu ; Démineur, 3 étapes ; Expert, 4 étapes, bouton allumé 1~s seulement (il faut la retenir).
+  \item \textbf{Hacker} : sur la bombe, \og écho\fg{} : le bouton de l'étape est précédé d'un flash bref d'un autre bouton, sans note (indice) ; sur le manuel, les lignes d'une étape sont mélangées pendant 10~s.
+  \item \textbf{Traitement local} : interruptions \emph{pin change} (PCINT2 pour le bleu et le rouge, PCINT0 pour le jaune) et \textbf{anti-rebond} par horodatage dans l'ISR (exactement l'exercice de la phase 1).
 \end{itemize}
 
 % ---------------------------------------------------------------------
@@ -410,7 +412,7 @@ Finale & 3 boutons & 3 LED, afficheur, LED Bar, buzzer, LCD & tous \\
 \label{sec:detonateur}
 
 \begin{itemize}
-  \item \textbf{Capteurs et actionneurs} : interrupteur DIP 6 positions, sous son volet ; bouton 2 (milieu) pour valider ; LCD pour le canal ; buzzer qui claque à chaque bascule ; LED rouge pour une faute immédiate ; LED Bar qui montre, pendant ce module, combien d'interrupteurs sont sur ON.
+  \item \textbf{Capteurs et actionneurs} : interrupteur DIP 6 positions (en haut à droite, repère \og INERT / GAME\fg{}) ; bouton jaune (milieu) pour valider ; LCD pour le canal ; buzzer qui claque à chaque bascule ; flash du bouton rouge pour une faute immédiate ; LED Bar qui montre, pendant ce module, combien d'interrupteurs sont sur ON.
   \item \textbf{Le démineur voit} : \code{CANAL 27} sur le LCD. Tous les interrupteurs sont à OFF (vérifié avant le démarrage).
   \item \textbf{Extrait de manuel} :
   \begin{manuel}
@@ -426,7 +428,7 @@ Finale & 3 boutons & 3 LED, afficheur, LED Bar, buzzer, LCD & tous \\
     \item un interrupteur basculé alors que son bit attendu est 0 donne une faute tout de suite. C'est une échéance \textbf{souple} ($\approx$ 100~ms), à ne pas confondre avec celle du Périmètre ;
     \item validation au bouton : compare les 6 bits au code attendu.
   \end{itemize}
-  \item \textbf{Usage hors partie (option)} : bouton 1 maintenu au démarrage $\to$ l'Arduino lit le DIP comme \textbf{configuration d'atelier}. Interrupteur 1 : mode silencieux (pas de buzzer, pour travailler en salle). Interrupteur 2 : mode banc de mesure de latence. Interrupteurs 5--6 : adresse I2C esclave (0x42 à 0x45), pour brancher plusieurs bombes sur un même RPi.
+  \item \textbf{Usage hors partie (option)} : bouton bleu maintenu au démarrage $\to$ l'Arduino lit le DIP comme \textbf{configuration d'atelier}. Interrupteur 1 : mode silencieux (pas de buzzer, pour travailler en salle). Interrupteur 2 : mode banc de mesure de latence. Interrupteurs 5--6 : adresse I2C esclave (0x42 à 0x45), pour brancher plusieurs bombes sur un même RPi.
 \end{itemize}
 
 % ---------------------------------------------------------------------
@@ -434,8 +436,8 @@ Finale & 3 boutons & 3 LED, afficheur, LED Bar, buzzer, LCD & tous \\
 \label{sec:finale}
 
 \begin{itemize}
-  \item \textbf{Capteurs et actionneurs} : les 3 boutons ; les 3 LED allumées ; l'afficheur, qui montre les centièmes ; la LED Bar devenue mèche ; le buzzer, qui bat comme un cœur de plus en plus vite ; le LCD (\code{COUPEZ LE FIL}).
-  \item \textbf{Extrait de manuel} : \emph{\og Maintenez le bouton sous la LED bleue si vous avez 0 faute, sous la rouge sinon. Relâchez quand l'afficheur du chrono contient un 4.\fg{}} Sous la minute, l'afficheur montre les centièmes : un 4 y apparaît souvent, mais seul le démineur le voit, d'où la tension.
+  \item \textbf{Capteurs et actionneurs} : les 3 boutons, tous allumés ; l'afficheur, qui montre les centièmes ; la LED Bar devenue mèche ; le buzzer, qui bat comme un cœur de plus en plus vite ; le LCD (\code{COUPEZ LE FIL}).
+  \item \textbf{Extrait de manuel} : \emph{\og Maintenez le bouton bleu si vous avez 0 faute, le rouge sinon. Relâchez quand l'afficheur du chrono contient un 4.\fg{}} Sous la minute, l'afficheur montre les centièmes : un 4 y apparaît souvent, mais seul le démineur le voit, d'où la tension.
   \item \textbf{Difficulté} : Recrue, relâcher quand l'afficheur \og contient un 4\fg{} ; Démineur, quand il \og se termine par un 4\fg{} ; Expert, quand les secondes sont paires \textbf{et} que l'afficheur se termine par un 4.
   \item \textbf{Hacker} : sur la bombe, l'accélération générale fait brûler la mèche plus vite ; sur le manuel, la coupure au moment critique est redoutable. Pas de perturbation propre à la finale.
   \item Relâcher au mauvais moment ou sur le mauvais bouton : faute, et on recommence la finale.
@@ -476,9 +478,10 @@ Le shield a 7 ports numériques (D2--D8), 4 analogiques (A0--A3), 4 I2C (tous re
 D0 / D1 & \textbf{LED Bar} (données D0, horloge D1) & port \textbf{UART} & Seule paire libre. Coût : plus de port série dans le firmware final (voir plus bas) \\
 D2 & Ultrasons & port D2 & \textbf{INT0} : interruption externe dédiée, la plus précise pour horodater l'écho \\
 D3 & Buzzer & port D3 & \code{tone()} (Timer2) pour jouer des notes \\
-D4, D5, D6 & Boutons Grove 1, 2, 3 & ports D4, D5, D6 & \textbf{PCINT20--22} (groupe PCINT2, comme dans la phase 1) : une seule ISR pour les 3 boutons \\
-D7 / D8 & \textbf{Bus I2C logiciel} (SCL = D7, SDA = D8) $\to$ hub $\to$ LCD + DIP & \textbf{port D7} & Les deux broches forment un port Grove : le hub s'y branche directement. Voir \S\ref{sec:i2clog} \\
-D9, D10, D11 & LED rouge, verte, bleue & câble Grove $\to$ jumpers mâles & Pas de port Grove sur D9--D13 \\
+D4 / D5 & \textbf{Bouton bleu} (gauche) : LED D4, bouton D5 & \textbf{port D4} & Bouton sur \textbf{PCINT21} (groupe PCINT2) \\
+D6 / D7 & \textbf{Bouton rouge} (droite) : LED D6, bouton D7 & \textbf{port D6} & LED sur \textbf{OC0A} : PWM matérielle du Timer0 pour la faire luire faiblement. Bouton sur \textbf{PCINT23} (groupe PCINT2) \\
+D8 / D9 & \textbf{Bouton jaune} (milieu) : LED D8, bouton D9 & \textbf{port D8} & Bouton sur \textbf{PCINT1} (groupe PCINT0) : seconde ISR, même code que PCINT2 \\
+D10 / D11 & \textbf{Bus I2C logiciel} (SCL = D10, SDA = D11) $\to$ hub $\to$ LCD + DIP & câble Grove $\to$ jumpers mâles & Les ports D4--D9 sont pris par les boutons ; un bus logiciel marche sur n'importe quelle broche. Voir \S\ref{sec:i2clog} \\
 D12 / D13 & \textbf{Afficheur 4 chiffres} (CLK D12, DIO D13) & câble Grove $\to$ jumpers mâles & Dernière paire libre \\
 A0 & Potentiomètre & port A0 & ADC \\
 A1 & Capteur de lumière & port A1 & ADC \\
@@ -488,6 +491,8 @@ A4 / A5 & \textbf{I2C esclave vers le RPi} & port I2C~1, câble Grove $\to$ jump
 \bottomrule
 \end{tabularx}
 \end{center}
+
+\paragraph{Boutons lumineux} Chaque bouton lumineux Grove (Seeed \emph{LED Button}) occupe un port numérique entier : le \textbf{fil jaune} (Dn) commande la LED à travers un MOSFET du module (active à l'état haut, PWM possible) ; le \textbf{fil blanc} (Dn+1) porte le bouton, \textbf{actif à l'état bas} grâce à la résistance de tirage du module (le firmware active aussi celle de l'Arduino, en secours si un câble se débranche). Les couleurs sont fixes sur le panneau, de gauche à droite : bleu, jaune, rouge. Le modèle n'existe pas en vert : le jaune reprend le rôle de \og prêt / accepté\fg{}.
 
 \paragraph{Perte du port série} La LED Bar n'a que des entrées haute impédance, elle ne gêne pas le téléversement par USB. En revanche le firmware final ne peut plus utiliser \code{Serial}. Solution : un drapeau de compilation \code{DEBUG_SERIAL} qui désactive la LED Bar pendant le développement (on la débranche), et des \textbf{mesures qui passent par le registre DIAG} de l'I2C, donc par le RPi. Si l'équipe préfère garder le port série, c'est la LED Bar qu'il faut sacrifier : c'est le composant le moins indispensable.
 
@@ -551,7 +556,7 @@ A4 / A5 & \textbf{I2C esclave vers le RPi} & port I2C~1, câble Grove $\to$ jump
     \node[hpin] at (8.05,{-6.2-0.42*\k}) {};
     \node[hlab, anchor=east] at (7.8,{-6.2-0.42*\k}) {\lab};
   }
-  \foreach \p in {hD13,hD12,hD11,hD10,hD9} { \node[hpinon] at (\p) {}; }
+  \foreach \p in {hD13,hD12,hD11,hD10} { \node[hpinon] at (\p) {}; }
   \node[hpinon] at (0.45,-3.88) {};   % 5V -> afficheur
   \node[hpinon] at (0.45,-4.30) {};   % GND -> afficheur
 
@@ -566,16 +571,17 @@ A4 / A5 & \textbf{I2C esclave vers le RPi} & port I2C~1, câble Grove $\to$ jump
 
   % Ports Grove utilisés
   \foreach \n/\x/\y/\t in {pA0/2.5/-1.1/A0, pA1/4.0/-1.1/A1, pA2/5.5/-1.1/A2,
-                           pI1/2.1/-2.9/I2C 1, pD4/6.3/-2.9/D4,
-                           pI2/2.1/-4.7/I2C 2, pD7/4.2/-4.7/D7, pD3/6.3/-4.7/D3,
-                           pI3/2.1/-6.5/I2C 3, pD6/4.2/-6.5/D6, pD2/6.3/-6.5/D2,
-                           pI4/2.1/-8.3/I2C 4, pD5/4.2/-8.3/D5, pU/6.3/-8.3/UART} {
+                           pI1/2.1/-2.9/I2C 1, pD8/4.2/-2.9/D8, pD4/6.3/-2.9/D4,
+                           pI2/2.1/-4.7/I2C 2, pD3/6.3/-4.7/D3,
+                           pD6/4.2/-6.5/D6, pD2/6.3/-6.5/D2,
+                           pU/6.3/-8.3/UART} {
     \node[gp] (\n) at (\x,\y) {};
     \foreach \k in {-0.39,-0.13,0.13,0.39} { \fill[black!65] ({\x+\k-0.05},{\y-0.08}) rectangle ++(0.1,0.16); }
     \node[gplab] at (\x,{\y+0.5}) {\t};
   }
   % Ports Grove non utilisés (grisés)
-  \foreach \n/\x/\y/\t in {pA3/7.0/-1.1/A3, pD8/4.2/-2.9/D8} {
+  \foreach \n/\x/\y/\t in {pA3/7.0/-1.1/A3, pD7/4.2/-4.7/D7, pD5/4.2/-8.3/D5,
+                           pI3/2.1/-6.5/I2C 3, pI4/2.1/-8.3/I2C 4} {
     \node[gpoff] (\n) at (\x,\y) {};
     \node[gplaboff] at (\x,{\y+0.5}) {\t};
   }
@@ -597,37 +603,31 @@ A4 / A5 & \textbf{I2C esclave vers le RPi} & port I2C~1, câble Grove $\to$ jump
   \fill (SK) circle (0.06);
 
   % =================== À droite : D0-D13 ===================
-  % Modules à prise Grove branchés sur D9-D13 : câble Grove -> jumpers mâles, fil par fil
+  % Modules à prise Grove branchés sur D10-D13 : câble Grove -> jumpers mâles, fil par fil
   \node[mod, anchor=west, text width=4.8cm, minimum height=1.1cm] (disp) at (10.8,-2.2) {Afficheur 4 chiffres (TM1637)\\\scriptsize jaune $\to$ D12 (CLK), blanc $\to$ D13 (DIO)};
-  \node[mod, anchor=west, text width=4.8cm, draw=blue!70!black]  (ledb) at (10.8,-3.4) {LED bleue\\\scriptsize jaune $\to$ D11};
-  \node[mod, anchor=west, text width=4.8cm, draw=green!50!black] (ledv) at (10.8,-4.4) {LED verte\\\scriptsize jaune $\to$ D10};
-  \node[mod, anchor=west, text width=4.8cm, draw=red!70!black]   (ledr) at (10.8,-5.4) {LED rouge\\\scriptsize jaune $\to$ D9};
+  \node[mod, anchor=west, text width=4.8cm, minimum height=1.1cm, draw=cyan!60!blue] (hub) at (10.8,-3.85) {Hub I2C (bus logiciel)\\\scriptsize jaune $\to$ D10 (SCL), blanc $\to$ D11 (SDA)};
+  \node[mod, anchor=north, text width=2.1cm, draw=cyan!60!blue] (lcd) at (12.05,-4.75) {\scriptsize LCD 16x2 (0x3E)};
+  \node[mod, anchor=north, text width=2.1cm, draw=cyan!60!blue] (dip) at (14.45,-4.75) {\scriptsize DIP 6 pos. (0x03)};
   \node[mod, anchor=west, text width=4.8cm] (buzz)   at (10.8,-6.4) {Buzzer\\\scriptsize port D3};
   \node[mod, anchor=west, text width=4.8cm] (us)     at (10.8,-7.4) {Ultrasons\\\scriptsize port D2 (INT0)};
   \node[mod, anchor=west, text width=4.8cm] (ledbar) at (10.8,-8.5) {LED Bar (MY9221)\\\scriptsize port UART (D0, D1)};
 
   \draw[ww] (hD13) -- (8.9,-3.28) -- (10.3,-1.95) -- (10.8,-1.95);
   \draw[wy] (hD12) -- (8.9,-3.70) -- (10.3,-2.45) -- (10.8,-2.45);
-  \draw[wy] (hD11) -- (8.9,-4.12) -- (10.3,-3.4)  -- (ledb.west);
-  \draw[wy] (hD10) -- (8.9,-4.54) -- (10.3,-4.4)  -- (ledv.west);
-  \draw[wy] (hD9)  -- (8.9,-4.96) -- (10.3,-5.4)  -- (ledr.west);
-  \foreach \m in {ledb, ledv, ledr} {
-    \draw[ww] ($(\m.west)+(0,-0.22)$) -- ++(-0.3,0);
-    \draw[nc] ($(\m.west)+(-0.36,-0.22)$) circle (0.06);
-  }
+  \draw[ww] (hD11) -- (8.9,-4.12) -- (10.3,-3.60) -- (10.8,-3.60);
+  \draw[wy] (hD10) -- (8.9,-4.54) -- (10.3,-4.10) -- (10.8,-4.10);
+  \draw[cgrove] (lcd.north |- hub.south) -- (lcd.north);
+  \draw[cgrove] (dip.north |- hub.south) -- (dip.north);
   \draw[cgrove] (pD3.east) -- (7.15,-4.7) -- (7.15,-5.17) -- (8.9,-5.17) -- (10.3,-6.4) -- (buzz.west);
   \draw[cgrove] (pD2.east) -- (7.15,-6.5) -- (7.15,-6.41) -- (8.9,-6.41) -- (10.3,-7.4) -- (us.west);
   \draw[cgrove] (pU.east)  -- (7.15,-8.3) -- (7.15,-8.51) -- (8.9,-8.51) -- (10.3,-8.5) -- (ledbar.west);
 
-  % =================== À gauche : I2C, boutons ===================
+  % =================== À gauche : I2C vers le RPi, boutons lumineux ===================
   \node[mod, anchor=east, text width=4.6cm, minimum height=1.3cm, draw=magenta!80!black] (lvl) at (-2.4,-2.0) {Adaptateur de niveau\\5~V $\leftrightarrow$ 3,3~V\\\scriptsize côté 5~V : port I2C 1};
   \node[mod, anchor=south, text width=4.6cm, draw=magenta!80!black] (rpi) at ($(lvl.north)+(0,0.5)$) {\textbf{Raspberry Pi}\\\scriptsize LV $\leftarrow$ 3,3~V (br.~1), GND (br.~6)\\\scriptsize SCL $\to$ GPIO3 (br.~5), SDA $\to$ GPIO2 (br.~3)};
-  \node[mod, anchor=east, text width=3.2cm] (b1) at (-2.4,-3.67) {Bouton 1 \scriptsize (port D4)};
-  \node[mod, anchor=east, text width=4.2cm, minimum height=1.1cm, draw=cyan!60!blue] (hub) at (-2.4,-5.5) {Hub I2C\\\scriptsize port D7\\\scriptsize SCL = D7, SDA = D8};
-  \node[mod, anchor=east, text width=3.0cm, draw=cyan!60!blue] (lcd) at (-7.4,-5.15) {LCD 16x2 (0x3E)};
-  \node[mod, anchor=east, text width=3.0cm, draw=cyan!60!blue] (dip) at (-7.4,-5.85) {DIP 6 pos. (0x03)};
-  \node[mod, anchor=east, text width=3.2cm] (b3) at (-2.4,-7.47) {Bouton 3 \scriptsize (port D6)};
-  \node[mod, anchor=east, text width=3.2cm] (b2) at (-2.4,-9.45) {Bouton 2 \scriptsize (port D5)};
+  \node[mod, anchor=east, text width=4.6cm, draw=yellow!70!orange, line width=0.9pt] (bj) at (-2.4,-3.3) {Bouton jaune (milieu) \scriptsize port D8\\\scriptsize LED D8, bouton D9};
+  \node[mod, anchor=east, text width=4.6cm, draw=blue!70!black, line width=0.9pt] (bb) at (-2.4,-4.45) {Bouton bleu (gauche) \scriptsize port D4\\\scriptsize LED D4, bouton D5};
+  \node[mod, anchor=east, text width=4.6cm, draw=red!70!black, line width=0.9pt] (br) at (-2.4,-7.47) {Bouton rouge (droite) \scriptsize port D6\\\scriptsize LED D6 (PWM), bouton D7};
 
   % port I2C 1 : câble Grove -> femelles vers le côté 5 V de l'adaptateur, fil par fil
   \coordinate (SL) at (-0.3,-2.9);
@@ -639,15 +639,12 @@ A4 / A5 & \textbf{I2C esclave vers le RPi} & port I2C~1, câble Grove $\to$ jump
   \fill (SL) circle (0.06);
   \draw[wj] (lvl.north) -- node[net, right] {4 jumpers (côté 3,3~V)} (rpi.south);
 
-  \draw[cgrove] (pD4.south) -- (6.3,-3.67) -- (b1.east);
-  \draw[cgrove] (pD7.south) -- (4.2,-5.5)  -- (hub.east);
-  \draw[cgrove] (hub.west |- lcd.east) -- (lcd.east);
-  \draw[cgrove] (hub.west |- dip.east) -- (dip.east);
-  \draw[cgrove] (pD6.south) -- (4.2,-7.47) -- (b3.east);
-  \draw[cgrove] (pD5.south) -- (4.2,-9.45) -- (b2.east);
+  \draw[cgrove] (pD8.south) -- (4.2,-3.3)  -- (-1.6,-3.3)  -- (bj.east);
+  \draw[cgrove] (pD4.south) -- (6.3,-3.65) -- (-1.6,-3.65) -- (-2.0,-4.45) -- (bb.east);
+  \draw[cgrove] (pD6.south) -- (4.2,-7.47) -- (br.east);
 
-  % Ports I2C 2-4 : câble Grove -> femelles ; jaune et blanc non reliés, rouge et noir vers une LED
-  \foreach \p/\y/\s in {pI2/-4.51/S2, pI3/-6.63/S3, pI4/-8.55/S4} {
+  % Port I2C 2 : câble Grove -> femelles ; jaune et blanc non reliés, rouge et noir vers le hub
+  \foreach \p/\y/\s in {pI2/-4.51/S2} {
     \coordinate (\s) at (-0.25,\y);
     \draw[cjump] (\p.west) -- ++(-0.275,0) |- (\s);
     \draw[wy] (\s) -- ++(-0.13,-0.28); \draw[nc] ($(\s)+(-0.13,-0.3)$) circle (0.05);
@@ -655,18 +652,16 @@ A4 / A5 & \textbf{I2C esclave vers le RPi} & port I2C~1, câble Grove $\to$ jump
     \node[pinlab] at ($(\s)+(0,-0.47)$) {n.c.};
   }
 
-  % =================== Fils rouge (5 V) et noir (GND) des modules sur D9-D13 ===================
-  % Chaque paire contourne la carte par la droite et par le bas, sans croiser les autres paires.
+  % =================== Fils rouge (5 V) et noir (GND) des modules sur D10-D13 ===================
+  % Chaque paire contourne la carte par la droite et par le bas, sans croiser l'autre paire.
   \foreach \m/\xr/\yb/\xl/\yr/\yk/\dr/\dk in {
       disp/17.3/-12.75/-1.55/-3.88/-4.30/{(0.45,-3.88)}/{(0.45,-4.30)},
-      ledb/16.95/-12.4/-1.2/-4.45/-4.57/{(-0.25,-4.45)}/{(-0.25,-4.57)},
-      ledv/16.6/-12.05/-0.85/-6.57/-6.69/{(-0.25,-6.57)}/{(-0.25,-6.69)},
-      ledr/16.25/-11.7/-0.5/-8.49/-8.61/{(-0.25,-8.49)}/{(-0.25,-8.61)}} {
+      hub/16.95/-12.4/-1.2/-4.45/-4.57/{(-0.25,-4.45)}/{(-0.25,-4.57)}} {
     \draw[wr, halo] ($(\m.east)+(0,0.08)$)  -| ({\xr+0.06},{\yb-0.06}) -| ({\xl-0.06},\yr) -- \dr;
     \draw[wk, halo] ($(\m.east)+(0,-0.08)$) -| ({\xr-0.06},{\yb+0.06}) -| ({\xl+0.06},\yk) -- \dk;
   }
-  \foreach \s in {S2,S3,S4} { \fill (\s) circle (0.06); }
-  \node[net, anchor=west, align=left] at (17.5,-3.0) {5~V et GND\\de l'afficheur\\et des LED};
+  \foreach \s in {S2} { \fill (\s) circle (0.06); }
+  \node[net, anchor=west, align=left] at (17.5,-3.0) {5~V et GND\\de l'afficheur\\et du hub I2C};
 
   % =================== Légende ===================
   \begin{scope}[shift={(-9.0,-13.45)}, font=\footnotesize]
@@ -683,7 +678,7 @@ A4 / A5 & \textbf{I2C esclave vers le RPi} & port I2C~1, câble Grove $\to$ jump
   \end{scope}
 \end{tikzpicture}%
 }
-\caption{Câblage sur le Grove Base Shield v2, vu de dessus comme la carte : ports Grove au centre, connecteurs de l'Arduino sur les bords (alimentation et A0--A5 à gauche, D0--D13 à droite). Les câbles Grove $\to$ jumpers sont détaillés fil par fil (\S\ref{sec:jumpers}). Les fils rouge et noir de l'afficheur et des LED font le tour de la carte jusqu'à leur source : broches 5V et GND du shield pour l'afficheur, ports I2C 2, 3 et 4 pour les LED bleue, verte et rouge. Ports grisés : D8 (sa broche est le fil blanc du port D7) et A3.}
+\caption{Câblage sur le Grove Base Shield v2, vu de dessus comme la carte : ports Grove au centre, connecteurs de l'Arduino sur les bords (alimentation et A0--A5 à gauche, D0--D13 à droite). Les câbles Grove $\to$ jumpers sont détaillés fil par fil (\S\ref{sec:jumpers}). Chaque bouton lumineux prend un port entier (LED sur le fil jaune, bouton sur le fil blanc). Les fils rouge et noir de l'afficheur et du hub I2C font le tour de la carte jusqu'à leur source : broches 5V et GND du shield pour l'afficheur, port I2C~2 pour le hub. Ports grisés : D5 et D7 (leurs broches sont les fils blancs des ports D4 et D6), I2C~3 et 4, A3.}
 \label{fig:brochage}
 \end{figure}
 \end{landscape}
@@ -704,10 +699,10 @@ Un \textbf{câble Grove $\to$ jumpers} garde la prise Grove à un bout et sépar
 
 \begin{itemize}
   \item la prise Grove est sur le \textbf{shield} (ports A2 et I2C~1) : le module n'a pas de prise Grove, ses broches reçoivent les fils un par un ;
-  \item la prise Grove est sur le \textbf{module} (LED, afficheur) : le module est branché sur D9--D13, qui n'ont pas de port Grove, et ses fils vont un par un sur les broches du shield.
+  \item la prise Grove est sur le \textbf{module} (hub I2C, afficheur) : le module est branché sur D10--D13, qui n'ont pas de port Grove, et ses fils vont un par un sur les broches du shield.
 \end{itemize}
 
-\paragraph{Alimentation des modules sur D9--D13} Les connecteurs du shield n'ont qu'une broche 5~V et trois GND. L'afficheur prend le 5~V et un GND du connecteur. Chaque LED prend son 5~V et son GND sur un \textbf{port I2C libre} (I2C~2, 3 et 4) : un câble Grove $\to$ jumpers femelles y est branché, et les fils rouge et noir de la LED s'enfichent dans ses fils rouge et noir. Les fils jaune et blanc de ces trois câbles portent SCL et SDA du bus du RPi : ils ne sont \textbf{pas reliés} et restent isolés (gaine ou ruban), sinon ils perturberaient le bus.
+\paragraph{Alimentation des modules sur D10--D13} Les connecteurs du shield n'ont qu'une broche 5~V et trois GND. L'afficheur prend le 5~V et un GND du connecteur. Le hub I2C prend son 5~V et son GND sur un \textbf{port I2C libre} (I2C~2) : un câble Grove $\to$ jumpers femelles y est branché, et les fils rouge et noir du hub s'enfichent dans ses fils rouge et noir. Les fils jaune et blanc de ce câble portent SCL et SDA du bus du RPi : ils ne sont \textbf{pas reliés} et restent isolés (gaine ou ruban), sinon ils perturberaient le bus.
 
 \begin{center}\small
 \begin{tabularx}{\linewidth}{P{2.7cm}P{2.6cm}P{1.8cm}P{1.8cm}LL}
@@ -717,21 +712,19 @@ Un \textbf{câble Grove $\to$ jumpers} garde la prise Grove à un bout et sépar
 Keypad & port A2 $\to$ femelles & OUT (A2) & n.c. (A3) & VCC du keypad & GND du keypad \\
 Adaptateur de niveau (côté 5~V) & port I2C~1 $\to$ femelles & SCL (A5) & SDA (A4) & HV & GND \\
 Afficheur 4 chiffres & module $\to$ mâles & D12 (CLK) & D13 (DIO) & broche 5V du shield & broche GND du shield \\
-LED rouge & module $\to$ mâles & D9 & n.c. & rouge du port I2C~4 & noir du port I2C~4 \\
-LED verte & module $\to$ mâles & D10 & n.c. & rouge du port I2C~3 & noir du port I2C~3 \\
-LED bleue & module $\to$ mâles & D11 & n.c. & rouge du port I2C~2 & noir du port I2C~2 \\
+Hub I2C (bus logiciel) & hub $\to$ mâles & D10 (SCL) & D11 (SDA) & rouge du port I2C~2 & noir du port I2C~2 \\
 \bottomrule
 \end{tabularx}
 \end{center}
 
-n.c. : non relié. Côté 3,3~V de l'adaptateur, quatre jumpers vont au RPi : LV $\leftarrow$ 3,3~V (broche 1), GND (broche 6), SCL $\to$ GPIO3 (broche 5), SDA $\to$ GPIO2 (broche 3). Les autres modules (boutons, buzzer, ultrasons, LED Bar, hub I2C, potentiomètre, capteur de lumière) utilisent un câble Grove ordinaire, d'un port du shield à leur prise.
+n.c. : non relié. Côté 3,3~V de l'adaptateur, quatre jumpers vont au RPi : LV $\leftarrow$ 3,3~V (broche 1), GND (broche 6), SCL $\to$ GPIO3 (broche 5), SDA $\to$ GPIO2 (broche 3). Les autres modules (boutons lumineux, buzzer, ultrasons, LED Bar, potentiomètre, capteur de lumière) utilisent un câble Grove ordinaire, d'un port du shield à leur prise.
 
 \subsection{Le piège du LCD et du DIP sur l'I2C}
 \label{sec:i2clog}
 
 Le LCD Grove 16x2 (contrôleur JHD1802, adresse 0x3E) et l'interrupteur DIP 6 positions (microcontrôleur intégré, adresse 0x03) sont des périphériques \textbf{I2C}. Or le seul contrôleur I2C du Uno doit être \textbf{esclave} du Raspberry Pi. Le faire basculer maître/esclave sur le même bus reviendrait à du multi-maître, que le contrôleur I2C du RPi gère mal.
 
-\textbf{Solution retenue} : un \textbf{second bus I2C logiciel} (bit-banging, \env 50~kHz) sur D7/D8, où l'Arduino est maître et le LCD et le DIP les esclaves. Ils se branchent sur le port Grove D7 via un \textbf{hub I2C Grove} : un port vers l'Arduino, un pour le LCD, un pour le DIP. Au démarrage, l'Arduino \textbf{scanne le bus} et signale tout périphérique absent ou en conflit d'adresse.
+\textbf{Solution retenue} : un \textbf{second bus I2C logiciel} (bit-banging, \env 50~kHz) sur D10/D11, où l'Arduino est maître et le LCD et le DIP les esclaves. Ils se branchent sur un \textbf{hub I2C Grove} : un port vers l'Arduino (câble Grove $\to$ jumpers mâles sur D10/D11, toutes les paires D4--D9 étant prises par les boutons lumineux), un pour le LCD, un pour le DIP. Au démarrage, l'Arduino \textbf{scanne le bus} et signale tout périphérique absent ou en conflit d'adresse.
 
 \begin{itemize}
   \item Le driver bit-bang laisse les interruptions \textbf{actives} : une préemption ralentit seulement l'horloge I2C, ce que le protocole tolère. Pas de section critique longue, donc pas d'impact sur la contrainte de 50~ms.
@@ -756,209 +749,146 @@ Plan B : le LCD sur le bus du RPi, piloté par la passerelle. On perd l'autonomi
 \subsection{Boîtier : une bombe au look \og C4\fg{}}
 \label{sec:boitier}
 
-La bombe reprend l'allure des charges C4 des jeux de tir tactiques (comme dans Counter-Strike), avec un dessin qui nous est propre : trois \textbf{pains factices} imprimés en 3D, sanglés de \textbf{ruban noir}, portent une \textbf{console de commande} qui regroupe écrans, keypad, LED et boutons. Des \textbf{fils apparents} relient la console aux pains (décor). Dimensions : 260 × 150 × 85~mm, console comprise. La figure~\ref{fig:bombe} détaille chaque face.
+La bombe reprend l'allure des charges C4 des jeux de tir tactiques, avec un dessin qui nous est propre : un \textbf{panneau vertical} imprimé en 3D, posé debout sur la table, fait de trois montants (vert, gris, vert) tenus par deux bandes de \textbf{ruban adhésif gris}. Des étiquettes \og DEMOLITION \dots{} (COMP C-4)\fg{} et des \textbf{fils apparents} en boucle autour du keypad complètent le décor. La figure~\ref{fig:bombe} montre la face avant, redessinée d'après la photo du prototype.
 
 \begin{itemize}
-  \item \textbf{Console (dessus)} : à gauche, le LCD, puis l'œil ultrason avec la cellule juste à côté (piège), et le DIP sous un volet \og DÉTONATEUR\fg{} ; au centre, l'afficheur 4 chiffres (chrono), la LED Bar, les 3 LED au-dessus des 3 boutons et la grille du buzzer ; à droite, le keypad.
-  \item \textbf{Côté droit} : le cadran (potentiomètre), au bout du pain du milieu, gradué de 3.00 à 4.00.
-  \item \textbf{Corps} : les trois pains forment un seul boîtier creux, ouvert sous la console. Il contient le Raspberry Pi, l'Arduino et son shield, le hub I2C et l'adaptateur de niveau ; les câbles Grove montent vers la console par l'ouverture. Une trappe vissée à l'arrière donne accès à l'intérieur.
-  \item \textbf{Alimentation} : \textbf{pas de batterie}. Un câble sort à l'arrière par un passe-fil et se termine par un \textbf{bloc secteur USB-C 5~V, 3~A}, à brancher directement sur une prise. Il alimente le RPi, qui alimente l'Arduino par son câble USB. La bombe diffuse son propre réseau Wi-Fi, sur lequel se connectent l'expert et le hacker.
+  \item \textbf{Haut} : la LED Bar, verticale, à gauche ; l'afficheur 4 chiffres (chrono) au centre ; le DIP à droite, sur le montant gris, avec le repère \og INERT / GAME\fg{}.
+  \item \textbf{Milieu} : le LCD sous l'afficheur ; sous la première bande de ruban, la cellule (un petit trou), juste au-dessus de l'œil ultrason (piège du Périmètre) ; puis le keypad.
+  \item \textbf{Bas} : les 3 boutons lumineux, de gauche à droite \textbf{bleu, jaune, rouge}. Le jaune est au milieu, sur le montant gris.
+  \item \textbf{Flancs} : le cadran (potentiomètre) sort du flanc droit, le buzzer du flanc gauche.
+  \item \textbf{Corps} : derrière le panneau, un boîtier creux contient le Raspberry Pi, l'Arduino et son shield, le hub I2C et l'adaptateur de niveau ; les câbles Grove rejoignent les modules du panneau par l'arrière.
+  \item \textbf{Alimentation} : \textbf{pas de batterie}. Un câble sort à l'arrière et se termine par un \textbf{bloc secteur USB-C 5~V, 3~A}, à brancher directement sur une prise. Il alimente le RPi, qui alimente l'Arduino par son câble USB. La bombe diffuse son propre réseau Wi-Fi, sur lequel se connectent l'expert et le hacker.
 \end{itemize}
 
-\begin{landscape}
-\begin{figure}[p]
+\begin{figure}[htbp]
 \centering
-\resizebox{!}{14.2cm}{%
 \begin{tikzpicture}[
-    font=\small,
-    pain/.style={draw=c4d, line width=0.8pt, fill=c4, rounded corners=4pt},
-    strap/.style={fill=black!85},
-    console/.style={draw=black, line width=0.8pt, fill=black!65, rounded corners=3pt},
-    part/.style={draw=black!70, fill=white, rounded corners=1pt},
-    num/.style={circle, draw=black, fill=yellow!45, inner sep=0pt, minimum size=0.4cm, font=\tiny\bfseries},
-    vtitle/.style={font=\small\bfseries, anchor=south},
-    lab/.style={font=\scriptsize, align=center},
-    dim/.style={{Latex[length=1.6mm]}-{Latex[length=1.6mm]}, black!60},
-    dimlab/.style={font=\scriptsize, text=black!60, fill=white, inner sep=1pt},
-    wdeco/.style={line width=1.4pt},
+    scale=0.75,
+    vert/.style={fill=bombv, draw=bombvd, line width=0.6pt},
+    gris/.style={fill=bombg, draw=bombgd, line width=0.6pt},
+    tape/.style={fill=black!16, draw=black!35, line width=0.4pt},
+    sticker/.style={fill=white!85!yellow, draw=black!40, line width=0.4pt},
+    num/.style={circle, draw=black, fill=yellow!45, inner sep=0pt, minimum size=0.42cm, font=\tiny\bfseries},
+    wdeco/.style={line width=1.3pt},
   ]
 
-  % ===================== Vue de dessus =====================
-  \begin{scope}
-    \node[vtitle] at (5.2,0.35) {Vue de dessus (l'avant en bas)};
-    \foreach \y in {0,-2,-4} { \draw[pain] (0,\y) rectangle (10.4,{\y-2}); }
-    \fill[strap] (0.32,0.08) rectangle (1.12,-6.08);
-    \fill[strap] (9.28,0.08) rectangle (10.08,-6.08);
-    \draw[wdeco, red!80!black]    (1.2,-1.3) .. controls (0.2,-1.1) and (0.1,-2.3) .. (0.32,-2.6);
-    \draw[wdeco, blue!70!black]   (1.2,-4.6) .. controls (0.3,-4.9) and (0.1,-3.9) .. (0.32,-3.6);
-    \draw[wdeco, yellow!80!orange] (9.2,-1.5) .. controls (10.2,-1.3) and (10.3,-2.4) .. (10.08,-2.7);
-    \draw[wdeco, red!80!black]    (9.2,-4.4) .. controls (10.1,-4.7) and (10.3,-3.8) .. (10.08,-3.5);
-    \draw[console] (1.2,-0.6) rectangle (9.2,-5.4);
-    % LCD
-    \draw[part, fill=black!80] (1.52,-0.92) rectangle (4.72,-2.36);
-    \fill[yellow!55!green!45] (1.7,-1.1) rectangle (4.54,-2.18);
-    \node[font=\scriptsize\ttfamily, align=left] at (3.12,-1.64) {LOT 5829\\CODE\string: 31\_\_};
-    % oeil + cellule
-    \draw[part] (1.6,-2.92) rectangle (3.4,-3.8);
-    \draw[fill=gray!45] (2.04,-3.36) circle (0.34);
-    \draw[fill=gray!45] (2.96,-3.36) circle (0.34);
-    \draw[part] (3.72,-3.0) rectangle (4.52,-3.8);
-    \fill[orange!70!black] (4.12,-3.4) circle (0.14);
-    % DIP sous son volet
-    \draw[dashed, white!80!black, rounded corners=2pt] (1.52,-4.08) rectangle (4.72,-5.26);
-    \draw[part] (1.92,-4.24) rectangle (4.32,-4.72);
-    \foreach \i in {0,...,5} { \draw[fill=black!25] ({2.04+0.38*\i},-4.3) rectangle ++(0.24,-0.36); }
-    \node[font=\tiny\bfseries, text=white] at (3.12,-5.0) {DÉTONATEUR};
-    % afficheur + LED Bar
-    \draw[part, fill=black] (5.12,-0.92) rectangle (6.88,-1.96);
-    \node[text=red!90, font=\sffamily\bfseries\large] at (6.0,-1.44) {\NoAutoSpacing 03:27};
-    \draw[part] (5.12,-2.2) rectangle (6.88,-2.68);
-    \foreach \i in {0,...,9} {
-      \ifnum\i<7 \def\segc{green!65!black}\else \def\segc{gray!35}\fi
-      \fill[\segc] ({5.2+0.16*\i},-2.26) rectangle ++(0.12,-0.36);
+  % ---- Éléments des flancs : cadran à droite, buzzer à gauche ----
+  \draw[fill=gray!55, draw=black!60] (10,-3.6) rectangle (10.4,-4.0);
+  \draw[fill=black!85, draw=black, rounded corners=1pt] (10.4,-3.42) rectangle (11.5,-4.18);
+  \foreach \x in {10.55,10.75,...,11.35} { \draw[white!45!black] (\x,-3.42) -- (\x,-4.18); }
+  \draw[fill=black!85, draw=black, rounded corners=2pt] (-0.75,-11.4) rectangle (0,-12.4);
+  \fill[black!55] (-0.6,-11.9) ellipse (0.08 and 0.3);
+
+  % ---- Montants ----
+  \draw[vert] (0,0) rectangle (3.2,-15);
+  \draw[vert] (3.2,0) rectangle (6.8,-4.4);
+  \draw[gris] (6.8,0) rectangle (10,-4.4);
+  \draw[gris] (3.2,-4.4) rectangle (6.8,-15);
+  \draw[vert] (6.8,-4.4) rectangle (10,-15);
+
+  % ---- LED Bar (jauge), verticale ----
+  \draw[fill=black!85, rounded corners=1pt] (1.0,-0.7) rectangle (2.0,-4.0);
+  \foreach \i in {0,...,9} {
+    \ifnum\i<3 \def\segc{gray!45}\else \def\segc{yellow!75!green}\fi
+    \fill[\segc] (1.2,{-0.88-0.31*\i}) rectangle (1.8,{-1.1-0.31*\i});
+  }
+
+  % ---- Afficheur 4 chiffres ----
+  \draw[fill=black!88, rounded corners=1pt] (3.5,-0.35) rectangle (6.5,-1.55);
+  \node[text=red!90, font=\sffamily\bfseries\Large] at (5.0,-0.95) {\NoAutoSpacing 45:00};
+
+  % ---- LCD 16x2 ----
+  \draw[fill=green!40!black, draw=black!60] (2.4,-1.85) rectangle (7.4,-4.3);
+  \foreach \x in {2.6,2.75,...,5.2} { \fill[yellow!60!gray] (\x,-2.03) circle (0.035); }
+  \draw[fill=black!85] (2.7,-2.25) rectangle (7.1,-3.95);
+  \fill[yellow!55!green!60] (2.85,-2.4) rectangle (6.95,-3.8);
+  \node[font=\ttfamily\scriptsize, text=black!80, align=left] at (4.9,-3.1) {INITIALISATION\\DESAMORCAGE...};
+
+  % ---- DIP 6 positions et son repère ----
+  \fill[white!80!gray] (8.85,-0.6) rectangle (9.45,-4.3);
+  \node[rotate=-90, font=\tiny\bfseries\sffamily] at (9.15,-2.45) {INERT / GAME};
+  \draw[fill=red!75!black, draw=black!60] (7.55,-1.7) rectangle (8.25,-3.75);
+  \foreach \i in {0,...,5} {
+    \draw[fill=white, draw=black!40] (7.75,{-1.92-0.3*\i}) rectangle ++(0.3,-0.18);
+    \fill[blue!60!black] (7.75,{-1.92-0.3*\i}) rectangle ++(0.12,-0.18);
+  }
+
+  % ---- Première bande de ruban, cellule, œil ----
+  \draw[tape] (-0.2,-4.45) rectangle (10.2,-5.35);
+  \fill[black] (5.0,-5.8) circle (0.12);
+  \foreach \x in {4.35,5.65} {
+    \draw[fill=gray!25, draw=black!65, line width=1pt] (\x,-6.85) circle (0.52);
+    \draw[fill=black!70, draw=black!40] (\x,-6.85) circle (0.32);
+  }
+
+  % ---- Fils apparents en boucle autour du keypad ----
+  \foreach \c/\o in {blue!70!black/0, yellow!80!orange/0.12, red!80!black/0.24, black!25/0.36} {
+    \draw[wdeco, \c] (3.6,{-8.0-\o}) .. controls ({1.6+\o},{-8.0-\o}) and ({1.6+\o},{-11.0+\o}) .. (3.6,{-11.0+\o});
+    \draw[wdeco, \c] (6.4,{-8.0-\o}) .. controls ({8.4-\o},{-8.0-\o}) and ({8.4-\o},{-11.0+\o}) .. (6.4,{-11.0+\o});
+  }
+
+  % ---- Seconde bande de ruban, étiquettes ----
+  \draw[tape] (-0.2,-11.25) rectangle (10.2,-12.2);
+  \draw[sticker] (0.3,-8.2) rectangle (1.3,-11.0);
+  \node[rotate=90, font=\tiny\sffamily, align=center] at (0.8,-9.6) {DEMOLITION M112\\(COMP C-4)};
+  \draw[sticker] (8.7,-5.7) rectangle (9.7,-8.5);
+  \node[rotate=-90, font=\tiny\sffamily, align=center] at (9.2,-7.1) {DEMOLITION M112\\(COMP C-4)};
+
+  % ---- Keypad 3x4 ----
+  \draw[fill=black!88, rounded corners=2pt] (3.55,-7.65) rectangle (6.45,-11.85);
+  \foreach \rr/\row in {0/{1,2,3}, 1/{4,5,6}, 2/{7,8,9}, 3/{*,0,\#}} {
+    \foreach \k [count=\c from 0] in \row {
+      \draw[fill=black!70, draw=black!45, rounded corners=2pt] ({3.8+0.86*\c},{-7.9-0.98*\rr}) rectangle ++(0.62,-0.62);
+      \node[text=white, font=\footnotesize\bfseries] at ({4.11+0.86*\c},{-8.21-0.98*\rr}) {\k};
     }
-    % LED et boutons
-    \foreach \x/\c in {5.36/red!85!black, 6.0/green!65!black, 6.64/blue!75} {
-      \draw[part] ({\x-0.28},-2.88) rectangle ({\x+0.28},-3.44);
-      \fill[\c] (\x,-3.16) circle (0.17);
-      \draw[part] ({\x-0.28},-3.68) rectangle ({\x+0.28},-4.24);
-      \draw[fill=black!60] (\x,-3.96) circle (0.19);
-    }
-    % buzzer
-    \draw[fill=black!85, draw=black!40] (6.0,-4.8) circle (0.3);
-    \foreach \a in {0,60,...,300} { \fill[white] ($(6.0,-4.8)+(\a:0.16)$) circle (0.03); }
-    \fill[white] (6.0,-4.8) circle (0.03);
-    % keypad
-    \draw[part, fill=black!85] (7.04,-1.4) rectangle (9.12,-4.2);
-    \foreach \rr/\row in {0/{1,2,3}, 1/{4,5,6}, 2/{7,8,9}, 3/{*,0,\#}} {
-      \foreach \k [count=\c from 0] in \row {
-        \draw[fill=white, rounded corners=1pt] ({7.2+0.64*\c},{-1.56-0.66*\rr}) rectangle ++(0.48,-0.48);
-        \node[font=\tiny\bfseries] at ({7.44+0.64*\c},{-1.8-0.66*\rr}) {\k};
-      }
-    }
-    % repères
-    \node[num] at (1.52,-0.92) {1};
-    \node[num] at (5.12,-0.92) {2};
-    \node[num] at (5.12,-2.2)  {3};
-    \node[num] at (5.0,-2.88)  {4};
-    \node[num] at (5.0,-3.68)  {5};
-    \node[num] at (7.04,-1.4)  {6};
-    \node[num] at (1.6,-2.92)  {7};
-    \node[num] at (4.52,-3.0)  {8};
-    \node[num] at (1.52,-4.08) {9};
-    \node[num] at (6.42,-4.55) {10};
-    \node[num] at (1.6,-5.7)   {12};
-    \node[num] at (0.72,-0.3)  {13};
-    \node[num] at (0.42,-1.9)  {14};
-    \draw[dim] (0,-6.45) -- node[dimlab] {260~mm} (10.4,-6.45);
-    \draw[dim] (-0.45,0) -- node[dimlab, rotate=90] {150~mm} (-0.45,-6);
-  \end{scope}
+  }
 
-  % ===================== Intérieur =====================
-  \begin{scope}[shift={(13.6,0)}]
-    \node[vtitle] at (5.2,0.35) {Intérieur, console retirée (vue de dessus)};
-    \draw[pain] (0,0) rectangle (10.4,-6);
-    \draw[fill=white, draw=c4d] (0.15,-0.15) rectangle (10.25,-5.85);
-    \draw[dashed, black!45] (1.2,-0.6) rectangle (9.2,-5.4);
-    \node[lab, text=black!55, anchor=south east] at (9.2,-5.4) {ouverture sous la console};
-    \draw[part, fill=green!22] (0.5,-0.5) rectangle (3.9,-2.74);
-    \node[lab] at (2.2,-1.62) {\textbf{Raspberry Pi}\\Wi-Fi : manuel, hacker};
-    \draw[part, fill=teal!22] (6.4,-0.5) rectangle (9.16,-2.62);
-    \node[lab] at (7.78,-1.56) {\textbf{Arduino Uno}\\+ Grove Base Shield};
-    \draw[part, fill=cyan!15] (6.4,-3.4) rectangle (8.0,-4.2);
-    \node[lab] at (7.2,-3.8) {hub I2C};
-    \draw[part, fill=magenta!12] (4.3,-3.4) rectangle (5.7,-4.1);
-    \node[lab] at (5.0,-3.75) {adaptateur\\de niveau};
-    \draw[line width=1.2pt, black!75] (3.9,-1.2) -- node[lab, above] {USB} (6.4,-1.2);
-    \draw[line width=1pt, magenta!80!black, dashed] (6.7,-2.62) |- (5.7,-3.75);
-    \draw[line width=1pt, black!55] (4.3,-3.75) -| node[lab, pos=0.25, below] {I2C} (2.2,-2.74);
-    \draw[line width=1pt, orange!90!black] (7.4,-2.62) -- (7.4,-3.4);
-    \node[lab, text=black!60] at (5.2,-4.85) {câbles Grove vers les modules de la console};
-    \draw[line width=1.8pt] (1.6,0.65) -- node[lab, right] {USB-C} (1.6,-0.5);
-    \draw[fill=black!45] (1.6,0) circle (0.13);
-    \node[num] at (1.15,0.45) {16};
-  \end{scope}
+  % ---- Boutons lumineux : bleu, jaune, rouge ----
+  \foreach \x/\c/\t in {1.6/blue!75!black/bleu, 5.0/yellow!85!orange/jaune, 8.4/red!80!black/rouge} {
+    \draw[fill=black!80] (\x,-13.6) circle (0.62);
+    \draw[fill=\c, draw=black!40] (\x,-13.6) circle (0.45);
+    \fill[white, opacity=0.35] ({\x-0.15},-13.45) circle (0.12);
+    \node[font=\scriptsize, text=white] at (\x,-14.55) {\t};
+  }
 
-  % ===================== Vue de face =====================
-  \begin{scope}[shift={(0,-9.1)}]
-    \node[vtitle] at (5.2,1.75) {Vue de face};
-    \draw[pain] (0,0) rectangle (10.4,-2.4);
-    \fill[strap] (0.32,0.08) rectangle (1.12,-2.48);
-    \fill[strap] (9.28,0.08) rectangle (10.08,-2.48);
-    \draw[console] (1.2,0) rectangle (9.2,1.0);
-    \draw[fill=black!85] (7.04,1.0) rectangle (9.12,1.12);
-    \foreach \x in {5.36,6.0,6.64} { \draw[fill=black!60] ({\x-0.15},1.0) rectangle ({\x+0.15},1.16); }
-    \draw[wdeco, red!80!black]     (1.2,0.5) .. controls (0.6,0.6) and (0.5,-0.3) .. (0.32,-0.6);
-    \draw[wdeco, yellow!80!orange] (9.2,0.4) .. controls (9.9,0.5) and (10.2,-0.2) .. (10.08,-0.6);
-    \draw[fill=black!70] (10.4,-0.95) rectangle (10.72,-1.45);
-    \node[num] at (4.6,-1.2)  {12};
-    \node[num] at (0.72,-1.2) {13};
-    \node[num] at (0.45,0.45) {14};
-    \node[num] at (11.05,-1.2) {11};
-    \node[num] at (8.08,1.45) {6};
-    \node[num] at (6.0,1.5)   {5};
-    \draw[dim] (-0.45,1.0) -- node[dimlab, rotate=90] {85~mm} (-0.45,-2.4);
-  \end{scope}
+  % ---- Repères ----
+  \node[num] at (2.4,-1.85)   {1};
+  \node[num] at (3.5,-0.35)   {2};
+  \node[num] at (1.0,-0.7)    {3};
+  \node[num] at (7.55,-1.7)   {4};
+  \node[num] at (5.4,-5.8)    {5};
+  \node[num] at (6.3,-6.35)   {6};
+  \node[num] at (3.55,-7.65)  {7};
+  \node[num] at (0.75,-12.95) {8};
+  \node[num] at (10.95,-3.0)  {9};
+  \node[num] at (-0.38,-10.95) {10};
+  \node[num] at (9.75,-4.9)   {11};
+  \node[num] at (2.55,-9.5)   {12};
+  \node[num] at (0.8,-11.6)   {13};
 
-  % ===================== Vue de côté droit =====================
-  \begin{scope}[shift={(13.6,-9.1)}]
-    \node[vtitle] at (3.0,1.75) {Vue de côté droit (l'avant à gauche)};
-    \foreach \x in {0,2,4} { \draw[pain] (\x,0) rectangle ({\x+2},-2.4); }
-    \draw[black!85, line width=2.2pt, rounded corners=4pt] (-0.04,0.04) rectangle (6.04,-2.44);
-    \draw[console] (0.6,0) rectangle (5.4,1.0);
-    \coordinate (k) at (3.0,-1.2);
-    \foreach \i in {0,...,10} {
-      \pgfmathsetmacro{\ang}{225-27*\i}
-      \draw[black!80] ($(k)+(\ang:0.5)$) -- ($(k)+(\ang:0.64)$);
-    }
-    \node[font=\tiny] at ($(k)+(225:0.9)$) {3.00};
-    \node[font=\tiny] at ($(k)+(-45:0.9)$) {4.00};
-    \draw[fill=black!70] (k) circle (0.42);
-    \draw[white, line width=1.4pt] (k) -- ++(120:0.36);
-    \node[num] at (3.75,-0.35) {11};
-    \node[num] at (1.0,-2.0)   {12};
-    \draw[dim] (0,-2.85) -- node[dimlab] {150~mm} (6,-2.85);
-  \end{scope}
-
-  % ===================== Vue de derrière =====================
-  \begin{scope}[shift={(0,-14.4)}]
-    \node[vtitle] at (5.2,1.75) {Vue de derrière};
-    \draw[pain] (0,0) rectangle (10.4,-2.4);
-    \fill[strap] (0.32,0.08) rectangle (1.12,-2.48);
-    \fill[strap] (9.28,0.08) rectangle (10.08,-2.48);
-    \draw[console] (1.2,0) rectangle (9.2,1.0);
-    \draw[dashed, black!70, rounded corners=2pt] (2.0,-0.3) rectangle (8.0,-2.1);
-    \foreach \p in {(2.2,-0.5),(7.8,-0.5),(2.2,-1.9),(7.8,-1.9)} { \draw[fill=gray!55] \p circle (0.08); }
-    \draw[fill=black!50] (8.8,-1.2) circle (0.16);
-    \draw[line width=1.9pt] (8.8,-1.2) .. controls (10.6,-1.3) and (10.9,-2.9) .. node[lab, pos=0.55, right] {\env 1,5~m} (12.3,-2.6);
-    \draw[fill=white, draw=black, rounded corners=2pt] (12.3,-2.0) rectangle (13.7,-3.2);
-    \draw[line width=1.6pt] (13.7,-2.4) -- (14.05,-2.4);
-    \draw[line width=1.6pt] (13.7,-2.8) -- (14.05,-2.8);
-    \node[lab] at (13.0,-2.6) {5~V\\3~A};
-    \node[num] at (2.0,-0.3)  {15};
-    \node[num] at (8.8,-0.75) {16};
-    \node[num] at (13.0,-1.7) {17};
-  \end{scope}
-
-  % ===================== Légende =====================
-  \node[anchor=north west, font=\scriptsize] at (16.3,-13.0) {%
-    \begin{tabular}{@{}r@{~~}l@{\qquad}r@{~~}l@{}}
-      \textbf{1} & LCD 16x2 (consignes)            & \textbf{10} & buzzer (grille) \\
-      \textbf{2} & afficheur 4 chiffres (chrono)   & \textbf{11} & cadran (potentiomètre) \\
-      \textbf{3} & LED Bar (jauge)                 & \textbf{12} & pains factices (corps creux) \\
-      \textbf{4} & LED rouge, verte, bleue         & \textbf{13} & sangles de ruban noir \\
-      \textbf{5} & boutons 1, 2, 3                 & \textbf{14} & fils apparents (décor) \\
-      \textbf{6} & keypad 3×4                      & \textbf{15} & trappe arrière vissée \\
-      \textbf{7} & œil : télémètre à ultrasons     & \textbf{16} & câble d'alimentation, passe-fil \\
-      \textbf{8} & cellule : capteur de lumière    & \textbf{17} & bloc secteur USB-C 5~V, 3~A \\
-      \textbf{9} & DIP sous le volet \og DÉTONATEUR\fg{} & & \\
+  % ---- Légende ----
+  \node[anchor=north west, font=\footnotesize] at (12.1,-0.2) {%
+    \begin{tabular}{@{}r@{~~}l@{}}
+      \textbf{1}  & LCD 16x2 (consignes) \\
+      \textbf{2}  & afficheur 4 chiffres (chrono) \\
+      \textbf{3}  & LED Bar (jauge, mèche) \\
+      \textbf{4}  & DIP 6 positions (Détonateur) \\
+      \textbf{5}  & cellule : capteur de lumière \\
+      \textbf{6}  & œil : télémètre à ultrasons \\
+      \textbf{7}  & keypad 3×4 (Clavier) \\
+      \textbf{8}  & boutons lumineux \\
+                  & bleu, jaune, rouge \\
+      \textbf{9}  & cadran (potentiomètre), \\
+                  & sur le flanc droit \\
+      \textbf{10} & buzzer, sur le flanc gauche \\
+      \textbf{11} & ruban adhésif \\
+      \textbf{12} & fils apparents (décor) \\
+      \textbf{13} & étiquettes (décor) \\
     \end{tabular}};
-\end{tikzpicture}%
-}
-\caption{La bombe au look \og C4\fg{} : trois pains factices sanglés de ruban noir, surmontés de la console de commande, et un câble d'alimentation qui sort à l'arrière. Vues de dessus, de face, de côté droit et de derrière, plus l'intérieur console retirée (échelle 1:2,5 environ).}
+\end{tikzpicture}
+\caption{Face avant de la bombe, d'après la photo du prototype : panneau vertical en trois montants imprimés en 3D, tenus par deux bandes de ruban. Les trois boutons lumineux sont en bas, de gauche à droite bleu, jaune, rouge.}
 \label{fig:bombe}
 \end{figure}
-\end{landscape}
 
 % =====================================================================
 \section{Architecture logicielle Arduino (FreeRTOS)}
@@ -976,7 +906,7 @@ Noyau \textbf{FreeRTOS V11.1.0 fourni avec les ressources du cours}, port \code{
 \toprule
 \textbf{Timer} & \textbf{Usage} & \textbf{Justification} \\
 \midrule
-Timer0 & Libre & Pas de \code{millis()} : le temps vient du tick FreeRTOS. Réserve (ex. échantillonnage rapide de la cellule, \S\ref{sec:budget}) \\
+Timer0 & \textbf{PWM de la LED du bouton rouge} (OC0A, D6) : fast PWM, prescaler 64, \env 1~kHz & Pas de \code{millis()} : le temps vient du tick FreeRTOS. La PWM fait luire le bouton rouge (indice de l'\og œil nerveux\fg{}). Son débordement, toutes les 1,024~ms, reste disponible pour échantillonner la cellule (\S\ref{sec:budget}) \\
 Timer1 & \textbf{Tick FreeRTOS} : CTC, prescaler 64, période 1~ms. Son compteur \code{TCNT1} avance toutes les \textbf{4~µs} & Imposé par le port du cours. Le hook du tick \textbf{déclenche le ping ultrason} tous les 20 ticks, et (tick, \code{TCNT1}) horodate l'écho à 4~µs près (\env 0,7~mm) \\
 Timer2 & \code{tone()} du buzzer (notes, sirène, mélodie) & Réservé au buzzer. Son interruption (une par demi-période du son) ajoute un peu de gigue : à mesurer (\S\ref{sec:mesure}) \\
 \bottomrule
@@ -993,7 +923,7 @@ Timer2 & \code{tone()} du buzzer (notes, sirène, mélodie) & Réservé au buzze
 \midrule
 \code{TIMER1_COMPA} & tick, toutes les 1~ms & ISR du port : incrémente le tick, change de contexte si besoin. Hook du tick : tous les 20 ticks, si la ligne écho est revenue à 0, impulsion de 10~µs, passage en entrée, arme INT0 ; scan des boutons (rattrape un relâchement masqué par l'anti-rebond) \\
 \code{INT0} & front de l'écho & horodate (tick, \code{TCNT1}), en ajoutant un tick si \code{OCF1A} est levé (tick en attente) ; sur le front descendant : calcule la distance, si $<$ D deux fois de suite $\to$ \code{vTaskNotifyGiveFromISR(tSafety)} + \code{taskYIELD()} (le port n'a pas de \code{portYIELD_FROM_ISR}) \\
-\code{PCINT2} & boutons Grove & lit \code{PIND}, anti-rebond 30~ms par horodatage, envoie l'événement dans \code{qEvents} \\
+\code{PCINT2}, \code{PCINT0} & boutons bleu et rouge (D5, D7) ; jaune (D9) & même code pour les deux ISR : lit \code{PIND} et \code{PINB} (boutons actifs à l'état bas), anti-rebond 30~ms par horodatage, envoie l'événement dans \code{qEvents} \\
 \code{TIMER2_COMPA} & \code{tone()} & bascule la broche du buzzer \\
 \code{TWI} (Wire) & RPi & \code{onReceive} : copie dans un buffer + notifie \code{tComm}. \code{onRequest} : renvoie un buffer \textbf{déjà prêt} \\
 \bottomrule
@@ -1010,7 +940,7 @@ Le clavier analogique n'a pas d'interruption : il est échantillonné par \code{
 \toprule
 \textbf{Tâche} & \textbf{Prio} & \textbf{Déclenchement} & \textbf{Rôle} \\
 \midrule
-\code{tSafety} & \textbf{3} (max) & notification de l'ISR ultrason & Allume tout de suite la LED rouge (écriture directe sur le port) et lance le son de faute, horodate la latence, pousse \code{FAULT} dans \code{qEvents} \\
+\code{tSafety} & \textbf{3} (max) & notification de l'ISR ultrason & Allume tout de suite la LED du bouton rouge (écriture directe sur le port, PWM coupée) et lance le son de faute, horodate la latence, pousse \code{FAULT} dans \code{qEvents} \\
 \code{tGame} & 2 & \code{qEvents} + timeout 100~ms & Machine à états de la partie, logique des modules, chrono (avec facteur de vitesse), fautes, explosion \\
 \code{tSense} & 2 & périodique 20~ms & ADC cadran, lumière et clavier : filtrage, hystérésis, calibration, occultations, décodage des touches $\to$ \code{qEvents} \\
 \code{tComm} & 1 & notification de l'ISR TWI & Décode les commandes, vérifie le CRC de la configuration, construit l'instantané d'état pour le RPi \\
@@ -1031,7 +961,7 @@ Le clavier analogique n'a pas d'interruption : il est échantillonné par \code{
   \item \textbf{Mutex \code{mState}} (avec héritage de priorité) : protège la lecture de l'état par \code{tHmi} et \code{tComm}.
   \item \textbf{Instantané I2C en double tampon} : \code{tComm} écrit le tampon inactif, puis échange l'index dans un \code{ATOMIC_BLOCK} (cf. note de bas de page du sujet sur \code{util/atomic.h}). L'ISR TWI lit toujours un tampon cohérent, sans verrou.
   \item \textbf{FIFO d'événements vers le RPi} : tampon circulaire de 16 événements avec numéro de séquence. Le RPi détecte les pertes.
-  \item \textbf{Priorité d'actionneur} : \code{tSafety} écrit directement LED rouge et buzzer et pose un \code{alarmUntil}. \code{tHmi} ne touche pas à ces sorties avant cette échéance.
+  \item \textbf{Priorité d'actionneur} : \code{tSafety} écrit directement la LED du bouton rouge et le buzzer et pose un \code{alarmUntil}. \code{tHmi} ne touche pas à ces sorties avant cette échéance.
 \end{itemize}
 
 \subsection{Budget mémoire (2~Ko de RAM, c'est la vraie contrainte du Uno)}
@@ -1114,7 +1044,7 @@ Dans \code{RUNNING}, sous-état \code{module_courant} (ordre donné par la confi
   \node[box, below=0.9cm of intr] (ech2) {2\textsuperscript{e} échantillon\\(+20~ms)};
   \node[box, right=of ech2] (notif) {notification\\+ yield};
   \node[box, right=of notif] (safe) {\texttt{tSafety}\\(prio max)};
-  \node[box, right=of safe, fill=red!8] (led) {\texttt{PORTB |=}\\\texttt{LED\_ROUGE}\\son de faute};
+  \node[box, right=of safe, fill=red!8] (led) {\texttt{PORTD |=}\\\texttt{LED\_ROUGE}\\son de faute};
 
   \draw[tr] (intr) -- (ping);
   \draw[tr] (ping) -- (echo);
@@ -1162,7 +1092,7 @@ Le chemin critique \textbf{ne dépend pas de l'ordonnancement périodique} : la 
 
 \begin{enumerate}
   \item \textbf{Instrumentation interne} : horodatage (tick, \code{TCNT1}), à 4~µs près, au front d'écho qui valide la faute, puis au moment où \code{tSafety} écrit la LED. Min, moyenne, max et compteur de dépassements dans le registre DIAG, lu par le RPi et envoyé au cloud.
-  \item \textbf{Mesure externe} avec un \textbf{analyseur logique} USB (clone Saleae 8 voies à \env 10~€, fortement recommandé) : voie 1 sur D2 (écho), voie 2 sur D9 (LED rouge). Histogramme sur quelques milliers de fautes provoquées.
+  \item \textbf{Mesure externe} avec un \textbf{analyseur logique} USB (clone Saleae 8 voies à \env 10~€, fortement recommandé) : voie 1 sur D2 (écho), voie 2 sur D6 (LED du bouton rouge). Histogramme sur quelques milliers de fautes provoquées.
   \item \textbf{Scénarios de charge} : (a) repos ; (b) LCD qui rafraîchit en continu ; (c) RPi qui interroge à 100~Hz ; (d) buzzer qui joue des notes (ISR du Timer2) + frappe rapide au clavier et aux boutons ; (e) tout à la fois + perturbations du hacker.
   \item \textbf{Comparaison avec une version \emph{superloop} naïve} (\code{loop()} avec \code{pulseIn()} bloquant + LCD + Wire) : montrer qu'elle \textbf{rate l'échéance} sous charge. C'est la justification chiffrée de l'usage du RTOS demandée pour l'oral.
 \end{enumerate}
@@ -1354,7 +1284,7 @@ Cas d'usage refusé en semaine 2 & faible & Préparer une fiche d'une page (conc
 \toprule
 \textbf{Semaine} & \textbf{Phase} & \textbf{Livrables} \\
 \midrule
-S1 & 1 : bare-metal & Boutons PCINT2 + anti-rebond, Timer1 CTC, LED, buzzer avec \code{tone()}. Premier test du keypad analogique : \textbf{relevé des tensions des 12 touches} \\
+S1 & 1 : bare-metal & Boutons lumineux PCINT2/PCINT0 + anti-rebond, Timer1 CTC, LED, buzzer avec \code{tone()}. Premier test du keypad analogique : \textbf{relevé des tensions des 12 touches} \\
 S2 & 2 : drivers & \textbf{Validation du cas d'usage par l'équipe enseignante.} Drivers ultrason (INT0, horodatage sur le Timer1 à 1~ms, futur tick FreeRTOS), ADC filtré (cadran, lumière, clavier), I2C logiciel pour le LCD et le DIP, afficheur 4 chiffres (TM1637), LED Bar (MY9221) \\
 S3 & 2 : FreeRTOS & Migration vers les tâches, chaîne de sécurité, \textbf{première mesure de latence}, budget mémoire \\
 S4 & 2 : I2C & Esclave + registres sur l'Arduino, maître sur le RPi, adaptateur de niveau, CRC \\
