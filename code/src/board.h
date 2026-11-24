@@ -11,6 +11,9 @@
 #define ULTRASONIC_DDR    DDRD
 #define ULTRASONIC_BIT    PD2
 
+/* Grove light sensor v1.2 on A1 (ADC1) */
+#define LIGHT_ADC_CHANNEL 1
+
 /* Buttons 1..3 on D4, D5, D6 (PD4..PD6, PCINT20..22), active high */
 #define BUTTON_PIN        PIND
 #define BUTTON_PORT       PORTD
