@@ -12,9 +12,18 @@ static button_handler_t handler;
 static volatile uint8_t stable;  /* bit i = button i pressed */
 static TickType_t last_change[BUTTON_COUNT];
 
+/* Bit i set = button i pressed. The buttons pull their line low. */
 static inline uint8_t read_raw(void)
 {
-    return (BUTTON_PIN & BUTTON_MASK) >> BUTTON_SHIFT;
+    uint8_t raw = 0;
+
+    if (!(BUTTON_BLUE_PIN & _BV(BUTTON_BLUE_BIT)))
+        raw |= _BV(BUTTON_BLUE);
+    if (!(BUTTON_YELLOW_PIN & _BV(BUTTON_YELLOW_BIT)))
+        raw |= _BV(BUTTON_YELLOW);
+    if (!(BUTTON_RED_PIN & _BV(BUTTON_RED_BIT)))
+        raw |= _BV(BUTTON_RED);
+    return raw;
 }
 
 /*
@@ -38,12 +47,22 @@ static void scan(BaseType_t *woken)
     }
 }
 
-ISR(PCINT2_vect)
+static void scan_from_pcint(void)
 {
     BaseType_t woken = pdFALSE;
     scan(&woken);
     if (woken)
         taskYIELD();  /* the AVR port has no portYIELD_FROM_ISR */
+}
+
+ISR(PCINT2_vect)  /* blue (D5), red (D7) */
+{
+    scan_from_pcint();
+}
+
+ISR(PCINT0_vect)  /* yellow (D9) */
+{
+    scan_from_pcint();
 }
 
 void button_tick_from_isr(void)
@@ -55,13 +74,20 @@ void button_tick_from_isr(void)
 void button_init(button_handler_t h)
 {
     handler = h;
-    BUTTON_DDR &= ~BUTTON_MASK;
-    BUTTON_PORT &= ~BUTTON_MASK;  /* Grove modules drive the line: no pull-up */
+    /* Inputs. The modules have their own pull-up; the internal one is a
+     * spare in case a cable comes loose (an open line reads "released"). */
+    DDRD &= ~BUTTON_PORTD_MASK;
+    PORTD |= BUTTON_PORTD_MASK;
+    DDRB &= ~BUTTON_PORTB_MASK;
+    PORTB |= BUTTON_PORTB_MASK;
     stable = read_raw();
 
-    PCMSK2 |= BUTTON_MASK;
-    PCIFR = _BV(PCIF2);
-    PCICR |= _BV(PCIE2);
+    /* PCINT16..23 are PD0..7 and PCINT0..7 are PB0..7: the port masks
+     * are also the pin change masks. */
+    PCMSK2 |= BUTTON_PORTD_MASK;
+    PCMSK0 |= BUTTON_PORTB_MASK;
+    PCIFR = _BV(PCIF2) | _BV(PCIF0);
+    PCICR |= _BV(PCIE2) | _BV(PCIE0);
 }
 
 bool button_is_pressed(button_id_t id)

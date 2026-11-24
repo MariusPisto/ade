@@ -5,10 +5,11 @@
 
 #include "FreeRTOS.h"
 
+/* The 3 Grove LED buttons, left to right on the bomb. */
 typedef enum {
-    BUTTON_1,
-    BUTTON_2,
-    BUTTON_3,
+    BUTTON_BLUE,
+    BUTTON_YELLOW,
+    BUTTON_RED,
     BUTTON_COUNT
 } button_id_t;
 
