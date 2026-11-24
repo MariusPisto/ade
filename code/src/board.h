@@ -5,6 +5,12 @@
 
 /* Pin map: Arduino Uno + Grove Base Shield v2 (see CONCEPTION.tex) */
 
+/* Grove ultrasonic ranger on D2 (PD2, INT0): one pin for trigger and echo */
+#define ULTRASONIC_PIN    PIND
+#define ULTRASONIC_PORT   PORTD
+#define ULTRASONIC_DDR    DDRD
+#define ULTRASONIC_BIT    PD2
+
 /* Buttons 1..3 on D4, D5, D6 (PD4..PD6, PCINT20..22), active high */
 #define BUTTON_PIN        PIND
 #define BUTTON_PORT       PORTD
