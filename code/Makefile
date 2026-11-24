@@ -2,12 +2,19 @@ PROGRAM  = ade
 MCU      = atmega328p
 F_CPU    = 16000000UL
 PORT    ?= COM7
-BUILD    = build
+DEMO    ?= light
+BUILD    = build/$(DEMO)
+
+DEMOS = $(basename $(notdir $(wildcard src/demo/*.c)))
+ifeq ($(filter $(DEMO),$(DEMOS)),)
+  $(error Unknown DEMO '$(DEMO)', pick one of: $(DEMOS))
+endif
 
 RTOS      = lib/FreeRTOS-Kernel
 RTOS_PORT = $(RTOS)/portable/GCC/ATMega328
 
-SRCS = $(wildcard src/*.c src/drivers/*.c $(RTOS)/*.c) $(RTOS_PORT)/port.c
+SRCS = $(wildcard src/*.c src/drivers/*.c $(RTOS)/*.c) $(RTOS_PORT)/port.c \
+       src/demo/$(DEMO).c
 OBJS = $(SRCS:%.c=$(BUILD)/%.o)
 
 INCLUDES = -Isrc -I$(RTOS)/include -I$(RTOS_PORT)
@@ -47,7 +54,7 @@ upload: $(BUILD)/$(PROGRAM).hex
 	$(AVRDUDE) -c arduino -p $(MCU) -P $(PORT) -b 115200 -D -U flash:w:$<:i
 
 clean:
-	rm -rf $(BUILD)
+	rm -rf build
 
 .PHONY: all upload clean
 
